@@ -27,9 +27,9 @@ public class PacketJoin extends DatagramPacket {
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
 
-        if (!readCode(dis).equals(packetCode)) {
-            throw new UnknownPacketException("Codice pacchetto in ingresso differente da "
-                    + packetCode);
+        String actualPacketCode = readPacketCode(dis);
+        if (!actualPacketCode.equals(packetCode)) {
+            throw new UnexpectedPacketException(packetCode,actualPacketCode);
         }
     }
 
@@ -46,7 +46,7 @@ public class PacketJoin extends DatagramPacket {
         ByteArrayOutputStream out = new ByteArrayOutputStream(PACKET_LEN);
         DataOutputStream dos = new DataOutputStream(out);
 
-        writeCode(dos, packetCode);
+        writePacketCode(dos, packetCode);
         dos.flush();
         buf = out.toByteArray();
 

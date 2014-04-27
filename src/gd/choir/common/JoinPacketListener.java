@@ -10,7 +10,5 @@ import gd.choir.proto.packets.PacketJoin;
  */
 @FunctionalInterface
 public interface JoinPacketListener {
-
-    public void packetArrived(PacketJoin jbdp);
-
+    public void packetArrived(PacketJoin packet);
 }

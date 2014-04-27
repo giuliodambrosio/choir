@@ -4,12 +4,12 @@
 package gd.choir.client;
 
 import java.io.IOException;
-import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import gd.choir.common.IncomingPacketDispatcher;
+import gd.choir.common.PacketDispatcher;
 import gd.choir.common.AudioBeginPacketListener;
 import gd.choir.proto.packets.audio.PacketBegin;
 
@@ -22,21 +22,12 @@ import gd.choir.proto.packets.audio.PacketBegin;
  *
  * @author Giulio D'Ambrosio
  */
-public class ClientPlayer implements AudioBeginPacketListener {
-    /**
-     * Gestore del gruppo multicast.
-     */
-    private IncomingPacketDispatcher demu;
+public class ClientPlaylistStreamingManager implements AudioBeginPacketListener {
+    private PacketDispatcher packetDispatcher;
 
-    /**
-     * Pool dell'esecuzione playlist.
-     */
-    private ExecutorService execPlayers;
+    private ExecutorService audioPlayerExecutors;
 
-    /**
-     * Coda dei brani da riprodurre.
-     */
-    private Vector<Integer> backlogPlaylist;
+    private final ConcurrentLinkedQueue<Integer> playlist;
 
     /**
      * Brani disponibili.
@@ -46,49 +37,42 @@ public class ClientPlayer implements AudioBeginPacketListener {
     /**
      * Costruttore.
      *
-     * @param demu Istanza del gestore del gruppo multicast
+     * @param packetDispatcher Istanza del gestore del gruppo multicast
      * @throws IOException
      */
-    public ClientPlayer(final IncomingPacketDispatcher demu)
+    public ClientPlaylistStreamingManager(final PacketDispatcher packetDispatcher)
             throws IOException {
         super();
-        this.demu = demu;
-        this.demu.registerListener(this);
+        this.packetDispatcher = packetDispatcher;
+        this.packetDispatcher.registerListener(this);
         players = new ConcurrentHashMap<>();
-        execPlayers = Executors.newFixedThreadPool(1);
-        backlogPlaylist = new Vector<>();
+        audioPlayerExecutors = Executors.newFixedThreadPool(1);
+        playlist = new ConcurrentLinkedQueue<>();
     }
 
     /**
-     * @param demu the demu to set
+     * @return the packetDispatcher
      */
-    public void setIncomingPacketDispatcher(IncomingPacketDispatcher demu) {
-        this.demu = demu;
-    }
-
-    /**
-     * @return the demu
-     */
-    public IncomingPacketDispatcher getIncomingPacketDispatcher() {
-        return demu;
+    public PacketDispatcher getIncomingPacketDispatcher() {
+        return packetDispatcher;
     }
 
     /**
      * Riproduce il brano audio in arrivo dal socket multicast.
      *
-     * @param jbdp Il pacchetto arrivato
+     * @param packet Il pacchetto arrivato
      */
     @Override
-    public final void packetArrived(final PacketBegin jbdp) {
-        AudioPlayer pl;
-        Integer plid;
+    public final void packetArrived(final PacketBegin packet) {
+        AudioPlayer player;
+        Integer musicId;
         try {
-            synchronized (backlogPlaylist) {
-                plid = (int) jbdp.musicId;
-                pl = new AudioPlayer(jbdp.musicId, jbdp.musicTitle, this);
-                backlogPlaylist.add(plid);
-                players.put(plid, pl);
-                execPlayers.execute(pl);
+            synchronized (playlist) {
+                musicId = (int) packet.musicId;
+                player = new AudioPlayer(packet.musicId, packet.musicTitle, this);
+                playlist.add(musicId);
+                players.put(musicId, player);
+                audioPlayerExecutors.execute(player);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -100,8 +84,8 @@ public class ClientPlayer implements AudioBeginPacketListener {
      * riproduzione, ma completando l'eventuale riproduzione in corso.
      */
     public final void stop() {
-        demu.unregisterListener(this);
-        execPlayers.shutdown();
+        packetDispatcher.unregisterListener(this);
+        audioPlayerExecutors.shutdown();
     }
 
     /**
@@ -110,12 +94,12 @@ public class ClientPlayer implements AudioBeginPacketListener {
     public final void stop(char musicId) {
         Integer plid = (int) musicId;
         AudioPlayer pl;
-        synchronized (backlogPlaylist) {
-            while (backlogPlaylist.contains(plid)) {
+        synchronized (playlist) {
+            while (playlist.contains(plid)) {
                 pl = players.get(plid);
                 try {
                     pl.stop();
-                    backlogPlaylist.wait(1000);
+                    playlist.wait(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                     break;
@@ -130,11 +114,11 @@ public class ClientPlayer implements AudioBeginPacketListener {
      * Attende che sia terminata la riproduzione di un brano.
      */
     public final void waitForEndOf(final char syncMusicId) {
-        Integer plid = (int) syncMusicId;
-        synchronized (backlogPlaylist) {
-            while (backlogPlaylist.contains(plid)) {
+        Integer musicId = (int) syncMusicId;
+        synchronized (playlist) {
+            while (playlist.contains(musicId)) {
                 try {
-                    backlogPlaylist.wait();
+                    playlist.wait();
                 } catch (InterruptedException e) {
                     break;
                 }
@@ -149,13 +133,12 @@ public class ClientPlayer implements AudioBeginPacketListener {
      *
      * @param pl Task di riproduzione di cui attendere la fine
      */
-    public final void notifyEndOf(final AudioPlayer pl) {
+    public final void notifyEndOfAudioPlayer(final AudioPlayer pl) {
         Integer plid = (int) pl.getCurrentlyPlayingMusicId();
-        synchronized (backlogPlaylist) {
+        synchronized (playlist) {
             players.remove(plid);
-            backlogPlaylist.remove(plid);
-            backlogPlaylist.notifyAll();
+            playlist.remove(plid);
+            playlist.notifyAll();
         }
     }
-
 }

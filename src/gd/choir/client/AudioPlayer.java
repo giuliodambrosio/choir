@@ -15,7 +15,7 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 
 import gd.choir.common.AudioDataPacketListener;
 import gd.choir.common.AudioEndPacketListener;
-import gd.choir.common.IncomingPacketDispatcher;
+import gd.choir.common.PacketDispatcher;
 import gd.choir.proto.packets.audio.PacketData;
 import gd.choir.proto.packets.audio.PacketEnd;
 
@@ -24,18 +24,20 @@ import gd.choir.proto.packets.audio.PacketEnd;
  *
  * @author Giulio D'Ambrosio
  */
-public class AudioPlayer implements AudioDataPacketListener,
-        AudioEndPacketListener, Runnable {
+public class AudioPlayer implements
+        AudioDataPacketListener,
+        AudioEndPacketListener,
+        Runnable {
     /**
      * Minimum number of frames to collect in the buffer.
      * When this number of frames is not available playing stops and and buffering starts
      */
-    private static final int MIN_BUFFERED_FRAMES = 2;
+    private static final int MIN_BUFFERED_FRAMES_TO_KEEP_PLAYING = 2;
 
     /**
      * Maximum number of frames to collect before starting to play
      */
-    private static final int MAX_BUFFERED_FRAMES = 4;
+    private static final int MAX_BUFFERED_FRAMES_TO_COLLECT_BEFORE_PLAYING = 4;
 
     /**
      * This flag is used to stop thread execution
@@ -52,13 +54,8 @@ public class AudioPlayer implements AudioDataPacketListener,
      */
     private Thread runningThread = null;
 
-    /**
-     */
     private char currentlyPlayingMusicId;
 
-    /**
-     * Titolo del brano in riproduzione.
-     */
     private String currentlyPlayingMusicTitle;
 
     /**
@@ -74,30 +71,25 @@ public class AudioPlayer implements AudioDataPacketListener,
     /**
      * Incoming packet stream
      */
-    private AudioPacketStreamReader incomingPacketStream;
+    private final AudioPacketStreamReader incomingPacketStream;
 
-    /**
-     * Sorgente di pacchetti multicast (via notifiche packetArrived).
-     */
-    private IncomingPacketDispatcher demu;
+    private PacketDispatcher demu;
 
     /**
      * Istanza del gestore della playlist del client.
      */
-    private ClientPlayer clientPlayer;
+    private ClientPlaylistStreamingManager clientPlaylistStreamingManager;
 
     private AudioInputStream ais;
-    private AudioFormat af;
     private SourceDataLine sdl;
-    private int bufsize;
     private byte[] buffer;
 
     public AudioPlayer(final char currentlyPlayingMusicId, final String currentlyPlayingMusicTitle,
-                       final ClientPlayer clientPlayer) throws Exception {
+                       final ClientPlaylistStreamingManager clientPlaylistStreamingManager) throws Exception {
         this.currentlyPlayingMusicId = currentlyPlayingMusicId;
         this.currentlyPlayingMusicTitle = currentlyPlayingMusicTitle;
-        this.demu = clientPlayer.getIncomingPacketDispatcher();
-        this.clientPlayer = clientPlayer;
+        this.demu = clientPlaylistStreamingManager.getIncomingPacketDispatcher();
+        this.clientPlaylistStreamingManager = clientPlaylistStreamingManager;
         incomingPacketStream = new AudioPacketStreamReader();
         demu.registerListener((AudioDataPacketListener) this);
         demu.registerListener((AudioEndPacketListener) this);
@@ -121,7 +113,7 @@ public class AudioPlayer implements AudioDataPacketListener,
      */
     private void destroy() {
         if (currentlyPlayingMusicId != (char) -1) {
-            clientPlayer.notifyEndOf(this);
+            clientPlaylistStreamingManager.notifyEndOfAudioPlayer(this);
             currentlyPlayingMusicId = (char) -1;
         }
     }
@@ -140,6 +132,8 @@ public class AudioPlayer implements AudioDataPacketListener,
      */
     private boolean startPlaying() {
         boolean success = true;
+        AudioFormat af;
+        int bufferSize;
         try {
             ais = AudioSystem.getAudioInputStream(incomingPacketStream);
             af = ais.getFormat();
@@ -147,10 +141,10 @@ public class AudioPlayer implements AudioDataPacketListener,
 
             // Inizializza un buffer di dimensione adeguata a contenere un
             // secondo di audio
-            bufsize = (int) (af.getSampleRate() * af.getFrameSize());
-            buffer = new byte[bufsize];
-            minBufferedSize = bufsize * MIN_BUFFERED_FRAMES;
-            maxBufferedSize = bufsize * MAX_BUFFERED_FRAMES;
+            bufferSize = (int) (af.getSampleRate() * af.getFrameSize());
+            buffer = new byte[bufferSize];
+            minBufferedSize = bufferSize * MIN_BUFFERED_FRAMES_TO_KEEP_PLAYING;
+            maxBufferedSize = bufferSize * MAX_BUFFERED_FRAMES_TO_COLLECT_BEFORE_PLAYING;
 
             // Apre il canale audio e imposta il volume master al massimo
             sdl.open(af);
@@ -176,10 +170,17 @@ public class AudioPlayer implements AudioDataPacketListener,
             System.err.println(e.getMessage());
         } finally {
             if (!success) {
-                System.err.println("Impossibile iniziare la riproduzione di "
-                        + currentlyPlayingMusicTitle);
+                System.err.printf(
+                        "Could not play streaming audio for: %s"
+                                + currentlyPlayingMusicTitle
+                );
+                System.out.println();
             } else {
-                System.out.println("Riproduzione brano : " + currentlyPlayingMusicTitle);
+                System.out.printf(
+                        "Playing streaming audio for: %s",
+                        currentlyPlayingMusicTitle
+                );
+                System.out.println();
             }
         }
         return success;
@@ -191,10 +192,10 @@ public class AudioPlayer implements AudioDataPacketListener,
      * riproduzione audio è in modalità {@link #buffering}.
      */
     @Override
-    public final void packetArrived(final PacketData jbdp) {
-        if (alive && jbdp.musicId == currentlyPlayingMusicId) {
+    public final void packetArrived(final PacketData packet) {
+        if (alive && packet.musicId == currentlyPlayingMusicId) {
             try {
-                incomingPacketStream.addPacket(jbdp.audioData, jbdp.audioData.length);
+                incomingPacketStream.addPacket(packet.audioData, packet.audioData.length);
             } catch (Exception e) {
                 alive = false;
             }
@@ -212,8 +213,8 @@ public class AudioPlayer implements AudioDataPacketListener,
      * {@link #buffering}) segnala su questo stesso oggetto la fine dei dati.
      */
     @Override
-    public final void packetArrived(final PacketEnd jbdp) {
-        if (alive && jbdp.musicId == currentlyPlayingMusicId) {
+    public final void packetArrived(final PacketEnd packet) {
+        if (alive && packet.musicId == currentlyPlayingMusicId) {
             incomingPacketStream.setCompleted();
             if (buffering) {
                 synchronized (this) {
@@ -221,15 +222,6 @@ public class AudioPlayer implements AudioDataPacketListener,
                 }
             }
         }
-    }
-
-    /**
-     * Crea e lancia il thread associato a questa istanza.
-     */
-    public final void start() {
-        alive = true;
-        runningThread = new Thread(this);
-        runningThread.start();
     }
 
     /**
@@ -266,7 +258,7 @@ public class AudioPlayer implements AudioDataPacketListener,
         // Thread.currentThread().setPriority(Thread.MAX_PRIORITY);
         if (!(alive = startPlaying())) {
             // Il thread terminerà perchè non è riuscito ad aprire il brano
-            System.out.println("AudioPlayer salterà questo brano...");
+            System.out.println("AudioPlayer will skip this file...");
         } else {
 
             // Legge, a blocchi, i dati dall'AudioInputStream e li scrive sul
@@ -284,9 +276,11 @@ public class AudioPlayer implements AudioDataPacketListener,
                         sdl.stop();
                         for (dotcount = 0; alive && buffering; dotcount++) {
                             if (dotcount == 0) {
-                                System.err.println("AudioPlayer: in attesa di bufferizzare "
-                                        + (maxBufferedSize - incomingPacketStream.available())
-                                        / 1024 + " KB");
+                                System.err.printf(
+                                        "AudioPlayer: filling up the buffer with %d Kb",
+                                        (maxBufferedSize - incomingPacketStream.available()) / 1024
+                                );
+                                System.err.println();
                             } else if (dotcount % 780 == 0) {
                                 System.err.println(".");
                             } else if (dotcount % 10 == 0) {
@@ -298,7 +292,7 @@ public class AudioPlayer implements AudioDataPacketListener,
                             if (!(buffering = !incomingPacketStream.isCompleted()
                                     && incomingPacketStream.available() < maxBufferedSize)) {
                                 sdl.start();
-                                System.err.println("\n\tinizio riproduzione");
+                                System.err.println("\n\tstarting playback");
                             }
                         }
                     }
@@ -314,10 +308,9 @@ public class AudioPlayer implements AudioDataPacketListener,
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                //
             }
-            // Aspetta che sia terminata la riproduzione dell'audio, quindi
-            // ferma tutto
+            // Wait for the running audio to finish
             if (alive) {
                 sdl.drain();
             }
@@ -328,11 +321,14 @@ public class AudioPlayer implements AudioDataPacketListener,
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            System.out.println("Terminata la riproduzione di " + currentlyPlayingMusicTitle);
+            System.out.printf(
+                    "Streaming completed for '%s'",
+                    currentlyPlayingMusicTitle
+            );
+            System.out.println();
         }
         demu.unregisterListener((AudioEndPacketListener) this);
         demu.unregisterListener((AudioDataPacketListener) this);
         destroy();
     }
-
 }

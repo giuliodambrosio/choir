@@ -14,75 +14,48 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
 /**
- * Legge il contenuto della directory audio e spedisce un pacchetto music per
- * ogni file audio trovato. Aggiunge anche il file audio alla collezione del
- * client.
+ * Scans a directory contents and sends a music packet for each audio file
+ * found.
+ * The audio files are also added to the local client collection.
  *
  * @author Giulio D'Ambrosio
  */
 public class DirectoryScanner implements Runnable {
-    /**
-     * Numero di thread contemporanei per la scansione delle entries delle
-     * sottodirectories del percorso da scansionare.
-     */
-    private static final int MAX_THREADS_SENDERS = 4;
+    private static final int AUDIO_FILE_SENDER_THREAD_POOL_SIZE = 4;
+
+    private static final int DIRECTORY_SCANNER_THREAD_POOL_SIZE = 2;
 
     /**
-     * Numero di thread contemporanei per l'invio di notifiche brani disponibili
-     * verso il server.
+     * This is a counter semaphor.
+     * It gets incremented every time a new task is added and decremented
+     * every time a task has finished.
+     * A notification on this instance is sent when the count reaches zero.
      */
-    private static final int MAX_THREADS_SCANNERS = 2;
+    private final AtomicInteger remaining = new AtomicInteger(0);
 
-    /**
-     * Semaforo / contatore. Ad ogni nuovo task viene incrementato e
-     * decrementato ad ogni completamento. Quando viene raggiunto lo zero, viene
-     * inviata una notifica su questo oggetto.
-     */
-    private AtomicInteger remaining = new AtomicInteger(0);
+    private File scanningPath;
 
-    /**
-     * Percorso da scansionare.
-     */
-    private File audioPath;
-
-    /**
-     * Istanza del client principale.
-     */
     private Client mainClient;
 
-    /**
-     * Pool dei thread che eseguono la scansione delle directories.
-     */
-    private ExecutorService execSenders;
+    private ExecutorService senderThreadPool;
 
-    /**
-     * Pool dei thread che notificano la disponibilità dei brani.
-     */
-    private ExecutorService execScanners;
+    private ExecutorService scannerThreadPool;
 
-    /**
-     * Costruttore.
-     *
-     * @param mainClient Istanza del client principale
-     * @param audioPath  Percorso da scansionare
-     */
-    public DirectoryScanner(final Client mainClient, final File audioPath) {
+    public DirectoryScanner(final Client mainClient, final File scanningPath) {
         super();
         this.mainClient = mainClient;
-        this.audioPath = audioPath;
-        execSenders = Executors.newFixedThreadPool(MAX_THREADS_SENDERS);
-        execScanners = Executors.newFixedThreadPool(MAX_THREADS_SCANNERS);
+        this.scanningPath = scanningPath;
+        senderThreadPool = Executors.newFixedThreadPool(AUDIO_FILE_SENDER_THREAD_POOL_SIZE);
+        scannerThreadPool = Executors.newFixedThreadPool(DIRECTORY_SCANNER_THREAD_POOL_SIZE);
     }
 
     /**
-     * Esegue la lettura della directory utilizzando scanDir, quindi attende sul
-     * monitor remaining che sia stata completata la scansione e libera i pool
-     * dei thread uscendo con un messaggio informativo.
+     * Launches the
      */
     @Override
     public final void run() {
         remaining.set(1);
-        scanDir(audioPath);
+        scanDir(scanningPath);
 
         try {
             synchronized (remaining) {
@@ -92,27 +65,30 @@ public class DirectoryScanner implements Runnable {
             e.printStackTrace();
         }
 
-        execScanners.shutdownNow();
-        execSenders.shutdownNow();
-        System.out.println("Scansione dei files audio terminata: "
-                + mainClient.getNumAudioFiles()
-                + " files audio trovati ed inviati al server");
+        scannerThreadPool.shutdownNow();
+        senderThreadPool.shutdownNow();
+        System.out.printf(
+                "Completed scanning directory %s for audio files: %d audio files found and notified to the server",
+                scanningPath,
+                mainClient.getNumAudioFiles()
+        );
+        System.out.println();
     }
 
     /**
-     * Esegue la lettura ricorsiva di un percorso nel file system utilizzando
-     * due pool di thread: uno per la lettura delle directories ed uno per
-     * l'analisi dei file audio e la comunicazione dei file verso il server.
+     * Recursively scans a directory structure using one pool of threads
+     * to read the directories and one pool of threads to send the found audio
+     * files information to the server
      */
     private void scanDir(final File path) {
         /**
          * Analizza un file, e se si tratta di file audio lo inserisce nella
          * collezione del client, e ne comunica l'id al server.
          */
-        class JBDirectoryEntry implements Runnable {
+        class DirectoryEntry implements Runnable {
             private File entryPath;
 
-            public JBDirectoryEntry(final File path) {
+            public DirectoryEntry(final File path) {
                 super();
                 entryPath = path;
                 remaining.incrementAndGet();
@@ -125,12 +101,18 @@ public class DirectoryScanner implements Runnable {
                     ais = AudioSystem.getAudioInputStream(entryPath);
                 } catch (UnsupportedAudioFileException e1) {
                     ais = null;
-                    System.err.println("File " + entryPath
-                            + " is not an audio file or has an unsupported format");
+                    System.err.printf(
+                            "File %s is not an audio file or has an unsupported format",
+                            entryPath
+                    );
+                    System.err.println();
                 } catch (IOException e1) {
                     ais = null;
-                    System.err.println("File " + entryPath
-                            + " can't be opened");
+                    System.err.printf(
+                            "File %s can't be opened",
+                            entryPath
+                    );
+                    System.err.println();
                 }
 
                 return ais != null;
@@ -140,7 +122,6 @@ public class DirectoryScanner implements Runnable {
             public void run() {
                 ClientAudioFile audioFile;
 
-                // controllo sul tipo di file
                 if (!isAudioFile()) {
                     if (remaining.decrementAndGet() == 0) {
                         synchronized (remaining) {
@@ -158,8 +139,11 @@ public class DirectoryScanner implements Runnable {
                         mainClient.removeAudioFile(audioFile);
                     }
                 }
-                System.err.println("File audio notificato al server : "
-                        + audioFile.getMusicTitle());
+                System.err.printf(
+                        "Server was notified about audio file: '%s'",
+                        audioFile.getMusicTitle()
+                );
+                System.err.println();
                 if (remaining.decrementAndGet() == 0) {
                     synchronized (remaining) {
                         remaining.notify();
@@ -173,9 +157,9 @@ public class DirectoryScanner implements Runnable {
             for (final File entry : path.listFiles()) {
                 if (entry.isDirectory()) {
                     remaining.incrementAndGet();
-                    execScanners.submit(() -> scanDir(entry));
+                    scannerThreadPool.submit(() -> scanDir(entry));
                 } else {
-                    execSenders.submit(new JBDirectoryEntry(entry));
+                    senderThreadPool.submit(new DirectoryEntry(entry));
                 }
             }
         }
@@ -185,5 +169,4 @@ public class DirectoryScanner implements Runnable {
             }
         }
     }
-
 }

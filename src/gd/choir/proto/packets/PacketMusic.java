@@ -22,7 +22,6 @@ public class PacketMusic extends StreamPacket {
     public PacketMusic() {
         super();
     }
-
     /**
      * Creates a packet for an audio file
      */
@@ -33,27 +32,16 @@ public class PacketMusic extends StreamPacket {
         inited = true;
     }
 
-    /**
-     * Riceve un pacchetto di questo genere da un input stream. Se il codice del
-     * pacchetto non coincide con quello previsto da questa classe, la funzione
-     * restituisce false, altrimenti true.
-     */
-    public boolean fromStream(DataInputStream dis) throws IOException {
-        if (!super.fromStream(dis, packetCode)) {
-            return false;
-        }
-        musicId = readWord(dis);
-        musicTitle = readString(dis);
-        return (inited = musicId != 0 && !musicTitle.equals(""));
+    public void fromStream(DataInputStream dis) throws IOException {
+        super.fromStream(dis, packetCode);
+        musicId = read16BitsWord(dis);
+        musicTitle = readZeroTerminatedString(dis);
     }
 
-    public boolean toStream(DataOutputStream dos) throws IOException {
-        if (!(musicId != 0 && !musicTitle.equals("") && super.toStream(dos, packetCode))) {
-            return false;
-        }
-        writeWord(dos, musicId);
-        writeString(dos, musicTitle);
-        return true;
+    public void toStream(DataOutputStream dos) throws IOException {
+        super.toStream(dos, packetCode);
+        write16BitsWord(dos, musicId);
+        writeZeroTerminatedString(dos, musicTitle);
     }
 
     public String toString() {

@@ -8,14 +8,11 @@ import java.io.File;
 import gd.choir.common.AudioFile;
 
 /**
- * Rappresentazione di una risorsa audio (lato client).
+ * Audio file representation for a client
  *
  * @author Giulio D'Ambrosio
  */
 public class ClientAudioFile extends AudioFile {
-    /**
-     * File del brano.
-     */
     private File file = null;
 
     public ClientAudioFile(final File audioFile) {
@@ -27,11 +24,8 @@ public class ClientAudioFile extends AudioFile {
 
     /**
      * Generates the hash code for the audio file.
-     * If no file is associated to this instance,
-     * Genera il codice hash per questa istanza. Il codice coincide con quello
-     * del {@link #file} se presente, altrimenti coincide con {@link #musicId}
-     *
-     * @return il codice hash
+     * If a {@link #file} is set in this instance, the hashcode will be the file hashcode,
+     * otherwise the hash code will be its {@link #musicId},
      */
     public final int hashCode() {
         int result;
@@ -44,18 +38,11 @@ public class ClientAudioFile extends AudioFile {
         return result & 0xffff;
     }
 
-    /**
-     * @param file the file to set
-     */
-    public final void setFile(File file) {
-        this.file = file;
-    }
-
-    /**
-     * @return the file
-     */
-    public final File getFile() {
+    public File getFile() {
         return file;
     }
 
+    public void setFile(File file) {
+        this.file = file;
+    }
 }

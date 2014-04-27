@@ -9,8 +9,8 @@ import gd.choir.proto.packets.PacketHello;
  * @author Giulio D'Ambrosio
  */
 @FunctionalInterface
-public interface HelloPacketListener {
+public interface HelloPacketListener extends PacketListener {
 
-    public void packetArrived(PacketHello jbdp);
+    public void packetArrived(PacketHello packet);
 
 }

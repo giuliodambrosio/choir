@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 
 import gd.choir.proto.packets.DatagramPacket;
-import gd.choir.proto.packets.UnknownPacketException;
+import gd.choir.proto.packets.UnexpectedPacketException;
 
 /**
  * Audio frame packet
@@ -36,12 +36,14 @@ public class PacketData extends DatagramPacket {
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
 
-        if (!readCode(dis).equals(packetCode)) {
-            throw new UnknownPacketException("Codice pacchetto in ingresso differente da "
-                    + packetCode);
+
+        String actualPacketCode = readPacketCode(dis);
+        if (!actualPacketCode.equals(packetCode)) {
+            throw new UnexpectedPacketException(packetCode,actualPacketCode);
         }
-        musicId = readWord(dis);
-        totLength = readWord(dis);
+
+        musicId = read16BitsWord(dis);
+        totLength = read16BitsWord(dis);
         audioData = new byte[totLength - PACKET_LEN];
         //noinspection ResultOfMethodCallIgnored
         in.read(audioData);
@@ -67,9 +69,9 @@ public class PacketData extends DatagramPacket {
         this.musicId = musicId;
         this.audioData = audioData;
 
-        writeCode(dos, packetCode);
-        writeWord(dos, musicId);
-        writeWord(dos, totLength);
+        writePacketCode(dos, packetCode);
+        write16BitsWord(dos, musicId);
+        write16BitsWord(dos, totLength);
         dos.write(audioData, 0, size);
         out.flush();
 

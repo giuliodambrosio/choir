@@ -9,8 +9,6 @@ import gd.choir.proto.packets.audio.PacketData;
  * @author Giulio D'Ambrosio
  */
 @FunctionalInterface
-public interface AudioDataPacketListener {
-
-    public void packetArrived(PacketData jbdp);
-
+public interface AudioDataPacketListener extends PacketListener {
+    public void packetArrived(PacketData packet);
 }

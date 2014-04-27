@@ -25,22 +25,15 @@ public class PacketPlay extends StreamPacket {
         inited = true;
     }
 
-    public boolean fromStream(DataInputStream dis) throws IOException {
-        if (!super.fromStream(dis, packetCode)) {
-            return false;
-        }
+    public void fromStream(DataInputStream dis) throws IOException {
+        super.fromStream(dis, packetCode);
 
-        musicId = readWord(dis);
-        return (inited = musicId != 0);
+        musicId = read16BitsWord(dis);
     }
 
-    public boolean toStream(DataOutputStream dos) throws IOException {
-        if (!(musicId != 0 && super.toStream(dos, packetCode))) {
-            throw new UnknownPacketException("Codice pacchetto in ingresso differente da "
-                    + packetCode);
-        }
-        writeWord(dos, musicId);
-        return true;
+    public void toStream(DataOutputStream dos) throws IOException {
+        super.toStream(dos, packetCode);
+        write16BitsWord(dos, musicId);
     }
 
     public String toString() {

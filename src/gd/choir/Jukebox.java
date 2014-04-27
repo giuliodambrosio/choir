@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.net.UnknownHostException;
 
 import gd.choir.client.Client;
-import gd.choir.server.Server;
+import gd.choir.server.ServerMain;
 
 import javax.sound.sampled.AudioFileFormat;
 import javax.sound.sampled.AudioSystem;
@@ -24,7 +24,7 @@ public class Jukebox {
 	 * @param args command line arguments
 	 */
 	public static void main(String[] args) {
-		Server server;
+		ServerMain serverMain;
 		Client client;
 		String	groupAddress=JB_MULTICAST_ADDR;
 		char groupPort=JB_MULTICAST_PORT;
@@ -42,13 +42,13 @@ public class Jukebox {
         audioPath = commandParameterParser.getAudioPath();
 
         while (true) {
-			server=null;
+			serverMain =null;
 			try {
 				client=new Client(groupAddress, groupPort, audioPath);
 				if (!client.connect()) {
-					System.err.println("No active server found: becoming a server");
-					server=new Server(groupAddress,groupPort,JB_SERVER_PORT,client);
-					server.start();
+					System.err.println("No active server found: becoming a serverMain");
+					serverMain =new ServerMain(groupAddress,groupPort,JB_SERVER_PORT,client);
+					serverMain.start();
 				}
 				int numr=0;
 				while (true){
@@ -57,17 +57,17 @@ public class Jukebox {
 						break;
 					}
 					if (numr++>2) {
-						System.err.println("Could not establish a connection with the server: bailing out");
+						System.err.println("Could not establish a connection with the serverMain: bailing out");
 						client.stop();
 						break;
 					}
-					System.err.println("Looking for a server");
+					System.err.println("Looking for a serverMain");
 					Thread.sleep(1000);
 				}
 
                 // Waiting for the threads to end.
-				if (server!=null && server.getRunningThread()!=null) {
-					server.getRunningThread().join();
+				if (serverMain !=null && serverMain.getRunningThread()!=null) {
+					serverMain.getRunningThread().join();
 				}
 				if (client.getRunningThread()!=null) {
 					client.getRunningThread().join();

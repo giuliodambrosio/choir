@@ -1,0 +1,10 @@
+<component name="ArtifactManager">
+  <artifact build-on-make="true" name="choir:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/choir_jar</output-path>
+    <root id="root">
+      <element id="archive" name="choir.jar">
+        <element id="module-output" name="choir" />
+      </element>
+    </root>
+  </artifact>
+</component>

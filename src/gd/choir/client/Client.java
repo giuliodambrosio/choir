@@ -16,7 +16,7 @@ import java.net.SocketTimeoutException;
 import java.util.Calendar;
 import java.util.concurrent.ConcurrentHashMap;
 
-import gd.choir.common.IncomingPacketDispatcher;
+import gd.choir.common.PacketDispatcher;
 import gd.choir.proto.packets.*;
 import gd.choir.proto.packets.Packet;
 
@@ -26,61 +26,30 @@ import gd.choir.proto.packets.Packet;
  * @author Giulio D'Ambrosio
  */
 public class Client implements Runnable {
-    /**
-     * Timeout (in secondi) della ricerca di un server nel gruppo multicast
-     */
-    private static final int JB_JOIN_TIMEOUT = 10;
+    private static final int WAITING_FOR_SERVER_TIMEOUT_IN_SECONDS = 5;
 
-    /**
-     * Dimensione della hash table contenente i brani messi a disposizione da
-     * questo client
-     */
-    private static final int AUDIOHASH_SIZE = 512;
+    private static final int AUDIO_FILES_HASH_MAP_SIZE = 512;
 
-    /**
-     * Gestore della porta multicast
-     */
-    private IncomingPacketDispatcher demu;
+    private PacketDispatcher packetDispatcher;
 
-    /**
-     * Porta multicast
-     */
-    private MulticastSocket mso = null;
+    private MulticastSocket multicastSocket = null;
 
-    /**
-     * Porta tcp utilizzata per comunicare in maniera affidabile con il server
-     */
-    private Socket so;
+    private InetAddress multicastGroupAddress;
 
-    /**
-     * Output stream associato alla porta tcp {@link #so}
-     */
-    private DataOutputStream os;
+    private char multicastGroupPort;
 
-    /**
-     * Indirizzo del gruppo multicast
-     */
-    private InetAddress groupAddress;
+    private Socket serverSocket;
 
-    /**
-     * Porta del gruppo multicast
-     */
-    private char groupPort;
+    private DataOutputStream serverStream;
 
-    /**
-     * Indirizzo del server
-     */
     private InetAddress serverAddress;
 
-    /**
-     * Porta del server
-     */
     private char serverPort;
 
     /**
      * Istanza del gestore della playlist di riproduzione brani
      */
-    private ClientPlayer clientPlayer = null;
+    private ClientPlaylistStreamingManager clientPlaylistStreamingManager = null;
 
     /**
      * Istanza del thread che manda in streaming un brano audio
@@ -117,7 +86,7 @@ public class Client implements Runnable {
      * L'insieme dei brani resi disponibili da questo client (memorizzate come
      * associazioni
      */
-    private ConcurrentHashMap<Integer, ClientAudioFile> audioFiles = null;
+    private final ConcurrentHashMap<Integer, ClientAudioFile> audioFiles = new ConcurrentHashMap<>(AUDIO_FILES_HASH_MAP_SIZE);
 
     /**
      * Contatore del numero di file audio resi disponibili {@link #audioFiles}
@@ -128,11 +97,11 @@ public class Client implements Runnable {
      * Costruttore.
      *
      * @param strGroupAddress Indirizzo del gruppo multicast a cui collegarsi
-     * @param groupPort       Porta del gruppo multicast a cui collegarsi
+     * @param multicastGroupPort       Porta del gruppo multicast a cui collegarsi
      * @param audioPath       Percorso dei file audio da rendere disponibili al gruppo
      * @throws IOException
      */
-    public Client(final String strGroupAddress, final char groupPort, final String audioPath)
+    public Client(final String strGroupAddress, final char multicastGroupPort, final String audioPath)
             throws IOException {
         super();
         File aPath = new File(audioPath);
@@ -144,8 +113,8 @@ public class Client implements Runnable {
             throw new IOException(audioPath
                     + " can't be read");
         }
-        this.groupAddress = InetAddress.getByName(strGroupAddress);
-        this.groupPort = groupPort;
+        this.multicastGroupAddress = InetAddress.getByName(strGroupAddress);
+        this.multicastGroupPort = multicastGroupPort;
         this.audioPath = audioPath;
     }
 
@@ -162,12 +131,16 @@ public class Client implements Runnable {
         if (isConnected()) {
             return true;
         }
-        if (mso == null) {
-            System.err.println("Trying to connect to multicast group: "
-                    + groupAddress + ":" + groupPort);
-            mso = new MulticastSocket(groupPort);
-            mso.joinGroup(groupAddress);
-            mso.setSoTimeout(1000);
+        if (multicastSocket == null) {
+            System.err.printf(
+                    "Trying to connect to multicast group: %s:%d",
+                    multicastGroupAddress,
+                    (int) multicastGroupPort
+            );
+            System.err.println();
+            multicastSocket = new MulticastSocket(multicastGroupPort);
+            multicastSocket.joinGroup(multicastGroupAddress);
+            multicastSocket.setSoTimeout(1000);
         }
         connector = new Thread(new Runnable() {
             public void run() {
@@ -182,17 +155,21 @@ public class Client implements Runnable {
                 DatagramPacket dp;
                 try {
 
-                    dp = new DatagramPacket(new byte[Packet.MAX_SIZE], Packet.MAX_SIZE);
+                    dp = new DatagramPacket(new byte[Packet.MAX_PACKET_PAYLOAD_SIZE], Packet.MAX_PACKET_PAYLOAD_SIZE);
 
-                    Client.this.mso.receive(dp);
+                    Client.this.multicastSocket.receive(dp);
 
                     pktHello = new PacketHello(dp);
                     Client.this.serverAddress = pktHello.serverAddress;
                     Client.this.serverPort = pktHello.serverPort;
                     Client.this.setConnected(true);
-                    System.err.println("Server answered: " +
-                            serverAddress + ":" + (int) serverPort);
-                } catch (UnknownPacketException e) {
+                    System.err.printf(
+                            "ServerMain answered from %s:%d",
+                            serverAddress,
+                            (int) serverPort
+                    );
+                    System.err.println();
+                } catch (UnexpectedPacketException e) {
                     // Packet is not the expected Hello
                 } catch (SocketTimeoutException e) {
                     // Packet did not arrive
@@ -208,8 +185,8 @@ public class Client implements Runnable {
 
                 if (isTimestampAtLeastOneSecondOld(lastJoinMessageSentTimestamp)) {
                     try {
-                        pktJoin = new PacketJoin(groupAddress, groupPort);
-                        Client.this.mso.send(pktJoin.getRawPacket());
+                        pktJoin = new PacketJoin(multicastGroupAddress, multicastGroupPort);
+                        Client.this.multicastSocket.send(pktJoin.getRawPacket());
                         System.err.println("join request sent");
                         lastJoinMessageSentTimestamp = Calendar.getInstance().getTimeInMillis();
                     } catch (IOException e) {
@@ -228,7 +205,7 @@ public class Client implements Runnable {
         });
         connector.start();
         try {
-            connector.join(JB_JOIN_TIMEOUT * 1000, 0);
+            connector.join(WAITING_FOR_SERVER_TIMEOUT_IN_SECONDS * 1000, 0);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -249,18 +226,18 @@ public class Client implements Runnable {
             while (alive) {
                 try {
                     pktPlay = new PacketPlay();
-                    pktPlay.fromStream(new DataInputStream(so.getInputStream()));
+                    pktPlay.fromStream(new DataInputStream(serverSocket.getInputStream()));
                     if ((audioFile = getAudioFile(pktPlay.musicId)) != null) {
                         if (audioPacketStreamWriter != null && audioPacketStreamWriter.isAlive()) {
                             audioPacketStreamWriter.stop();
                         }
-                        audioPacketStreamWriter = new AudioPacketStreamWriter(groupAddress, groupPort, audioFile, getDemultiplexer());
+                        audioPacketStreamWriter = new AudioPacketStreamWriter(multicastGroupAddress, multicastGroupPort, audioFile, getPacketDispatcher());
                         audioPacketStreamWriter.start();
                     } else {
                         System.err.println("Stale audio file requested: "
                                 + pktPlay.musicId);
                     }
-                } catch (UnknownPacketException e) {
+                } catch (UnexpectedPacketException e) {
                     System.err.println("Unexpected server message");
                     alive = false;
                 } catch (SocketException e) {
@@ -315,8 +292,8 @@ public class Client implements Runnable {
     public final void notifyNewAudioFile(final ClientAudioFile audioFile)
             throws IOException {
         PacketMusic pm = new PacketMusic(audioFile);
-        synchronized (os) {
-            pm.toStream(os);
+        synchronized (serverStream) {
+            pm.toStream(serverStream);
         }
     }
 
@@ -346,7 +323,7 @@ public class Client implements Runnable {
      *
      * @throws IOException
      */
-    public final boolean start() throws IOException {
+    public final void start() throws IOException {
         // Se non era già connesso, tenta di nuovo di connettersi
         if (!connect()) {
             // Se fallisce significa che qualcosa non va con il server che gira
@@ -357,47 +334,36 @@ public class Client implements Runnable {
             // ma per equità, questo client decide che, se non dà, non vuole
             // neanche ricevere.
             alive = false;
-            return false;
+            return;
         }
-        if (demu == null) {
-            demu = new IncomingPacketDispatcher(groupAddress, groupPort, mso);
+        if (packetDispatcher == null) {
+            packetDispatcher = new PacketDispatcher(multicastGroupAddress, multicastGroupPort, multicastSocket);
         }
-
-        audioFiles = new ConcurrentHashMap<>(AUDIOHASH_SIZE);
 
         // Tenta di connettersi con socket tcp al server
-        System.out.println("Connessione al server " + serverAddress + ":"
-                + (int) serverPort);
-        so = new Socket(serverAddress, serverPort);
-        os = new DataOutputStream(so.getOutputStream());
+        System.out.printf(
+                "Trying to connect to server at %s:%d",
+                serverAddress,
+                (int) serverPort
+        );
+        System.out.println();
+        serverSocket = new Socket(serverAddress, serverPort);
+        serverStream = new DataOutputStream(serverSocket.getOutputStream());
 
         runningThread = new Thread(this);
 
-		/*
-      Istanza della classe che effettua la scansione della directory contenente
-	  i file audio
-
-	 */
         DirectoryScanner dirScanner = new DirectoryScanner(this, new File(audioPath));
-		/*
-	  Istanza del thread che esegue la scansione della directory contenente i
-	  file audio resi disponibili da questo client
-	 */
+
         Thread dirScannerThread = new Thread(dirScanner);
         dirScannerThread.setPriority(Thread.MIN_PRIORITY);
 
-        clientPlayer = new ClientPlayer(getDemultiplexer());
+        clientPlaylistStreamingManager = new ClientPlaylistStreamingManager(getPacketDispatcher());
 
         runningThread.start();
 
-        if (demu.getRunningThread() == null) {
-            demu.setRunningThread(new Thread(demu));
-            demu.getRunningThread().start();
-        }
-        // clientPlayer.start();
-        dirScannerThread.start();
+        packetDispatcher.start();
 
-        return true;
+        dirScannerThread.start();
     }
 
     public final void setConnected(boolean isConnected) {
@@ -408,11 +374,6 @@ public class Client implements Runnable {
         return connected;
     }
 
-    /**
-     * Attende la fine del thread principale e dei thread collegati.
-     *
-     * @throws InterruptedException
-     */
     public final void stop() throws InterruptedException {
         if (alive && runningThread != null && runningThread.isAlive()) {
             runningThread.join();
@@ -421,60 +382,30 @@ public class Client implements Runnable {
         if (connector != null && connector.isAlive()) {
             connector.join();
         }
-        if (clientPlayer != null) {
-            clientPlayer.stop();
+        if (clientPlaylistStreamingManager != null) {
+            clientPlaylistStreamingManager.stop();
         }
         if (audioPacketStreamWriter != null) {
             audioPacketStreamWriter.stop();
         }
-        if (demu != null) {
-            demu.stopNow();
+        if (packetDispatcher != null) {
+            packetDispatcher.stopNow();
         }
     }
 
-    /**
-     * Interrompe il threa del client ed i thread ad esso collegati.
-     *
-     * @throws InterruptedException
-     */
-    public final void stopNow() throws InterruptedException {
-        alive = false;
-        stop();
+    public final void setPacketDispatcher(final PacketDispatcher packetDispatcher) {
+        this.packetDispatcher = packetDispatcher;
     }
 
-    /**
-     * @param demu Il gestore delle comunicazioni con il gruppo multicast
-     */
-    public final void setDemultiplexer(final IncomingPacketDispatcher demu) {
-        this.demu = demu;
+    public final PacketDispatcher getPacketDispatcher() {
+        return packetDispatcher;
     }
 
-    /**
-     * @return Il gestore delle comunicazioni con il gruppo multicast.
-     */
-    public final IncomingPacketDispatcher getDemultiplexer() {
-        return demu;
+    public final ClientPlaylistStreamingManager getPlaylistStreamingManager() {
+        return clientPlaylistStreamingManager;
     }
 
-    /**
-     * @return Restituisce l'istanza del gestore della riproduzione.
-     */
-    public final ClientPlayer getPlayer() {
-        return clientPlayer;
-    }
-
-    /**
-     * @param runningThread the runningThread to set
-     */
-    public final void setRunningThread(Thread runningThread) {
-        this.runningThread = runningThread;
-    }
-
-    /**
-     * @return the runningThread
-     */
     public final Thread getRunningThread() {
         return runningThread;
     }
-
 }

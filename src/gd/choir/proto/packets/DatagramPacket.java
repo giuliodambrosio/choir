@@ -14,7 +14,7 @@ import gd.choir.proto.packets.audio.PacketEnd;
  *
  * @author Giulio D'Ambrosio
  */
-public class DatagramPacket extends Packet {
+abstract public class DatagramPacket extends Packet {
     /**
      * Eventuale pacchetto udp generato o ricevuto.
      */
@@ -55,42 +55,33 @@ public class DatagramPacket extends Packet {
      */
     static public DatagramPacket fromDatagram(java.net.DatagramPacket rawPacket)
             throws IOException {
-        DatagramPacket p;
-        String pt = DatagramPacket.peekCode(rawPacket);
-        switch (pt) {
+        DatagramPacket packet;
+        String packetCode = DatagramPacket.peekPacketCode(rawPacket);
+        switch (packetCode) {
             case PacketJoin.packetCode:
-                p = new PacketJoin(rawPacket);
+                packet = new PacketJoin(rawPacket);
                 break;
             case PacketHello.packetCode:
-                p = new PacketHello(rawPacket);
+                packet = new PacketHello(rawPacket);
                 break;
             case PacketBegin.packetCode:
-                p = new PacketBegin(rawPacket);
+                packet = new PacketBegin(rawPacket);
                 break;
             case PacketData.packetCode:
-                p = new PacketData(rawPacket);
+                packet = new PacketData(rawPacket);
                 break;
             case PacketEnd.packetCode:
-                p = new PacketEnd(rawPacket);
+                packet = new PacketEnd(rawPacket);
                 break;
             default:
-                throw new UnknownPacketException("Unknown packet code ("
-                        + pt + "[" + pt.length() + "])");
+                throw new UnknownPacketException(packetCode);
         }
-        return p;
+        return packet;
     }
 
-    /**
-     * Legge il codice da un pacchetto udp in arrivo.
-     *
-     * @param rawPacket Packet to inspect
-     * @return Stringa contenente il codice
-     * @throws IOException
-     */
-    static public String peekCode(java.net.DatagramPacket rawPacket) throws IOException {
+    static public String peekPacketCode(java.net.DatagramPacket rawPacket) throws IOException {
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
-        return readCode(dis);
+        return readPacketCode(dis);
     }
-
 }

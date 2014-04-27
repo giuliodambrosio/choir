@@ -8,32 +8,23 @@ import java.io.IOException;
 import gd.choir.common.AudioFile;
 
 /**
- * Rappresentazione di una risorsa audio (lato server).
+ * Server-side audio file abstraction
  *
  * @author Giulio D'Ambrosio
  */
 public final class ServerAudioFile extends AudioFile {
-    /**
-     * Eventuale istanza del task associato a questo brano.
-     */
-    private ServerClientHandler owner = null;
+    private ServerClientHandler ownerClientHandler;
 
-    /**
-     * Flag: se true, questo brano è attualmente in streaming.
-     */
     private boolean isBeingStreamed = false;
 
-    /**
-     * Costruttore. La versione lato server del file audio, include un'istanza
-     * del gestore delle comunicazioni con il singolo client (owner).
-     */
     public ServerAudioFile(final char musicId, final String musicTitle,
-                           final ServerClientHandler owner) {
-        super(musicId);
-        if (owner == null) {
+                           final ServerClientHandler ownerClientHandler) {
+        super();
+        if (ownerClientHandler == null) {
             throw new NullPointerException("Owner for the file must be set");
         }
-        this.owner = owner;
+        setMusicId(musicId);
+        this.ownerClientHandler = ownerClientHandler;
         this.musicTitle = musicTitle;
     }
 
@@ -46,7 +37,7 @@ public final class ServerAudioFile extends AudioFile {
     @Override
     public int hashCode() {
         int result;
-        result = hashCode(getOwner().getSocket().getInetAddress(), musicId);
+        result = hashCode(getOwnerClientHandler().getSocket().getInetAddress(), musicId);
         return result & 0xffff;
     }
 
@@ -54,8 +45,8 @@ public final class ServerAudioFile extends AudioFile {
      * @return L'istanza del gestore delle comunicazioni del client a cui
      * appartiene questo brano
      */
-    public ServerClientHandler getOwner() {
-        return owner;
+    public ServerClientHandler getOwnerClientHandler() {
+        return ownerClientHandler;
     }
 
     /**
@@ -75,19 +66,18 @@ public final class ServerAudioFile extends AudioFile {
     }
 
     /**
-     * Chiede al thread che si occupa di comunicare con il client (owner
+     * Chiede al thread che si occupa di comunicare con il client (ownerClientHandler
      * {@link ServerClientHandler}) di spedire un pacchetto play con l'id di
      * questa istanza.
      *
-     * @return true se la comunicazione è riuscita
      * @throws IOException
      */
-    public boolean startStreaming() throws IOException {
-        return owner.startStreaming(this);
+    public void requestClientForAudioStreaming() throws Exception {
+        ownerClientHandler.requestClientForAudioStreaming(this);
     }
 
     /**
-     * Notifica al thread che si occupa di comunicare con il client (owner
+     * Notifica al thread che si occupa di comunicare con il client (ownerClientHandler
      * {@link ServerClientHandler}) che lo streaming di questo brano è
      * terminato.
      *
@@ -95,6 +85,6 @@ public final class ServerAudioFile extends AudioFile {
      */
     public void streamingEnded() throws Exception {
         isBeingStreamed = false;
-        owner.streamingEnded(this);
+        ownerClientHandler.streamingEnded(this);
     }
 }

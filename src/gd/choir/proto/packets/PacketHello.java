@@ -26,15 +26,15 @@ public class PacketHello extends DatagramPacket {
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
 
-        if (!(rc = readCode(dis)).equals(packetCode)) {
-            throw new UnknownPacketException("Codice pacchetto in ingresso ("
-                    + rc + ") differente da " + packetCode);
+        String actualPacketCode = readPacketCode(dis);
+        if (!actualPacketCode.equals(packetCode)) {
+            throw new UnexpectedPacketException(packetCode,actualPacketCode);
         }
 
         //noinspection ResultOfMethodCallIgnored
         dis.read(rawAddress, 0, 4);
         serverAddress = InetAddress.getByAddress(rawAddress);
-        serverPort = readWord(dis);
+        serverPort = read16BitsWord(dis);
     }
 
     public PacketHello(InetAddress serverAddress, char serverPort,
@@ -45,9 +45,9 @@ public class PacketHello extends DatagramPacket {
         this.serverAddress = serverAddress;
         this.serverPort = serverPort;
 
-        writeCode(dos, packetCode);
+        writePacketCode(dos, packetCode);
         dos.write(serverAddress.getAddress(), 0, 4);
-        writeWord(dos, serverPort);
+        write16BitsWord(dos, serverPort);
         dos.flush();
         rawPacket = new java.net.DatagramPacket(out.toByteArray(), PACKET_LEN, groupAddress, groupPort);
         inited = true;

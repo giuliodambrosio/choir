@@ -14,16 +14,17 @@ import java.util.ListIterator;
  * memoria. I pacchetti vengono copiati in una coda di buffer di dimensione
  * parametrica.
  *
+ * This class transform an incoming packet stream
  * @author Giulio D'Ambrosio
  */
 public class AudioPacketStreamReader extends InputStream {
-    private class JBPacketData {
+    private class PacketData {
         long startOffset;
         long endOffset;
         byte[] data;
         long dataSize;
 
-        public JBPacketData(byte[] data, int dataSize, long startOffset) {
+        public PacketData(byte[] data, int dataSize, long startOffset) {
             if (data == null) {
                 throw new NullPointerException();
             }
@@ -38,22 +39,16 @@ public class AudioPacketStreamReader extends InputStream {
     /**
      * Coda dei packets
      */
-    private LinkedList<JBPacketData> packets;
+    private LinkedList<PacketData> packets;
 
     /**
      * Se true, lo stream è arrivato completamente
      */
     private boolean completed = false;
 
-    /**
-     * Posizione nello stream
-     */
-    private long offset = 0L;
+    private long streamPosition = 0L;
 
-    /**
-     * Dimensione complessiva dello stream
-     */
-    private long totalSize = 0L;
+    private long streamAvailableSize = 0L;
 
     /**
      * Posizione memorizzata per rollback
@@ -66,12 +61,9 @@ public class AudioPacketStreamReader extends InputStream {
      */
     private long markLimit = 0L;
 
-    /**
-     * Costruttore.
-     */
     public AudioPacketStreamReader() {
         packets = new LinkedList<>();
-        this.totalSize = 0;
+        this.streamAvailableSize = 0;
     }
 
     /**
@@ -82,29 +74,29 @@ public class AudioPacketStreamReader extends InputStream {
     @Override
     public synchronized int read() throws IOException {
         int res, off;
-        JBPacketData p;
+        PacketData p;
 
-        if (offset >= totalSize) {
+        if (streamPosition >= streamAvailableSize) {
             if (completed) {
                 return -1;
             }
-            // Si blocca in attesa del prossimo pacchetto dati
+            // Stops execution waiting to be notified about an incoming packet
             try {
                 wait();
             } catch (InterruptedException e) {
-                // E' richiesta l'interruzione della lettura
+                // This happens when it is required to stop waiting
             }
-            if (offset >= totalSize) {
-                // sbloccato, ma ancora vuoto:stream finito
+            if (streamPosition >= streamAvailableSize) {
+                // There are no more bytes to read: end of stream has been reached
                 return completed ? -1 : 0;
             }
         }
 
         p = getPacket();
-        off = (int) (offset - p.startOffset);
+        off = (int) (streamPosition - p.startOffset);
         res = (int) p.data[off];
         res &= 0xff;
-        offset++;
+        streamPosition++;
 
         freePastBuffers();
         return res;
@@ -120,7 +112,7 @@ public class AudioPacketStreamReader extends InputStream {
     @Override
     public synchronized int read(byte[] buffer, int bufferOffset,
                                  int bufferLength) throws IOException {
-        JBPacketData p;
+        PacketData p;
 
         long off, len;
 
@@ -137,34 +129,34 @@ public class AudioPacketStreamReader extends InputStream {
             return 0;
         }
 
-        if (offset >= totalSize) {
-            while (!completed && offset >= totalSize) {
+        if (streamPosition >= streamAvailableSize) {
+            while (!completed && streamPosition >= streamAvailableSize) {
                 try {
                     wait();
                 } catch (InterruptedException e) {
                     // richiesta l'interruzione della lettura
                 }
             }
-            if (completed && offset >= totalSize) {
+            if (completed && streamPosition >= streamAvailableSize) {
                 // Stream terminato
                 return -1;
             }
         }
-        if (offset + bufferLength > totalSize) {
-            // Se l'offset e/o la lunghezza dei dati richiesti superano i dati
+        if (streamPosition + bufferLength > streamAvailableSize) {
+            // Se l'streamPosition e/o la lunghezza dei dati richiesti superano i dati
             // disponibili,
             /*
 			 * altrimenti si blocca in attesa del prossimo pacchetto dati
 			 */
-            while (!completed && offset + bufferLength > totalSize) {
+            while (!completed && streamPosition + bufferLength > streamAvailableSize) {
                 try {
                     wait();
                 } catch (InterruptedException e) {
                     // richiesta l'interruzione della lettura
                 }
             }
-            if (offset + bufferLength > totalSize) {
-                bufferLength -= (offset + bufferLength) - totalSize;
+            if (streamPosition + bufferLength > streamAvailableSize) {
+                bufferLength -= (streamPosition + bufferLength) - streamAvailableSize;
             }
         }
 
@@ -174,23 +166,23 @@ public class AudioPacketStreamReader extends InputStream {
 
         // Legge i dati richiesti da tutti i pacchetti necessari
         long curbuflen = bufferLength, curbufoff = bufferOffset;
-        ListIterator<JBPacketData> i;
+        ListIterator<PacketData> i;
         i = packets.listIterator();
         while (true) {
             if (!i.hasNext()) {
                 throw new IOException("out of packets error");
             }
             p = i.next();
-            if (offset >= p.startOffset && offset < p.endOffset) {
+            if (streamPosition >= p.startOffset && streamPosition < p.endOffset) {
                 break;
             }
         }
         while (curbuflen > 0) {
-            off = (int) (offset - p.startOffset);
+            off = (int) (streamPosition - p.startOffset);
             len = Math.min(p.dataSize - off, curbuflen);
             System.arraycopy(p.data, (int) off, buffer, (int) curbufoff, (int) len);
 
-            offset += len;
+            streamPosition += len;
             curbufoff += len;
             curbuflen -= len;
             if (!i.hasNext()) {
@@ -208,31 +200,33 @@ public class AudioPacketStreamReader extends InputStream {
      * Libera tutti i pacchetti che non possono essere più richiesti in quanto
      * letti, ed oltre l'eventuale limite precedentemente marcato tramite
      * chiamata al metodo mark.
+     * Frees all the packets that can't be reached anymore because already read
+     * and behind the optional limit previosuly set by calling {@link gd.choir.client.AudioPacketStreamReader#mark}
      */
     private synchronized void freePastBuffers() {
         if (markPosition < 0
-                || (markPosition >= 0 && markPosition + markLimit < offset)) {
+                || (markPosition >= 0 && markPosition + markLimit < streamPosition)) {
             // libera la memoria per i packet già letti e non marcati
             while (packets.size() > 1
-                    && packets.getFirst().endOffset - 1 < offset) {
+                    && packets.getFirst().endOffset - 1 < streamPosition) {
                 packets.removeFirst();
             }
         }
     }
 
     /**
-     * Restituisce il buffer che contiene il byte all'offset corrente.
+     * Restituisce il buffer che contiene il byte all'streamPosition corrente.
      *
      * @return il buffer corrente
      */
-    private synchronized JBPacketData getPacket() {
-        if (offset < 0 || offset >= totalSize || packets.size() == 0) {
+    private synchronized PacketData getPacket() {
+        if (streamPosition < 0 || streamPosition >= streamAvailableSize || packets.size() == 0) {
             throw new IndexOutOfBoundsException();
         }
-        JBPacketData res = null;
-        for (JBPacketData packet : packets) {
+        PacketData res = null;
+        for (PacketData packet : packets) {
             res = packet;
-            if (offset >= res.startOffset && offset < res.endOffset) {
+            if (streamPosition >= res.startOffset && streamPosition < res.endOffset) {
                 break;
             }
         }
@@ -253,8 +247,8 @@ public class AudioPacketStreamReader extends InputStream {
         if (packetData == null || packetSize <= 0) {
             throw new IOException("null packet data");
         }
-        packets.addLast(new JBPacketData(packetData, packetSize, totalSize));
-        totalSize += packetSize;
+        packets.addLast(new PacketData(packetData, packetSize, streamAvailableSize));
+        streamAvailableSize += packetSize;
         notify();
     }
 
@@ -263,7 +257,7 @@ public class AudioPacketStreamReader extends InputStream {
      * blocco in attesa di dati non ancora arrivati.
      */
     public synchronized int available() throws IOException {
-        return (int) (totalSize - offset);
+        return (int) (streamAvailableSize - streamPosition);
     }
 
     /**
@@ -271,23 +265,23 @@ public class AudioPacketStreamReader extends InputStream {
      * dell'oggetto durante una read bloccante.
      */
     public synchronized void close() throws IOException {
-        totalSize = 0;
-        offset = 0;
+        streamAvailableSize = 0;
+        streamPosition = 0;
         setCompleted();
     }
 
     /**
      * Memorizza la posizione attuale: alla successiva chiamata del metodo
-     * reset, verrà ripristinata la posizione in cui si trovava offset al
+     * reset, verrà ripristinata la posizione in cui si trovava streamPosition al
      * momento di questa chiamata. Se durante la lettura saranno stati letti
      * markLimit bytes, senza che la posizione sia stata resettata, il limite
-     * andrà perso, così come i dati precedenti all'offset corrente.
+     * andrà perso, così come i dati precedenti all'streamPosition corrente.
      *
      * @param markLimit Numero di bytes oltrepassati i quali, la posizione marcata
      *                  sarà persa
      */
     public synchronized void mark(int markLimit) {
-        markPosition = offset;
+        markPosition = streamPosition;
         this.markLimit = markLimit;
     }
 
@@ -297,7 +291,7 @@ public class AudioPacketStreamReader extends InputStream {
         if (markPosition < 0) {
             throw new IOException("Resetting to invalid mark");
         }
-        offset = markPosition;
+        streamPosition = markPosition;
     }
 
     /**

@@ -12,7 +12,7 @@ import java.net.InetAddress;
 
 import gd.choir.common.AudioFile;
 import gd.choir.proto.packets.DatagramPacket;
-import gd.choir.proto.packets.UnknownPacketException;
+import gd.choir.proto.packets.UnexpectedPacketException;
 
 /**
  * Start audio stream packet
@@ -35,12 +35,14 @@ public class PacketBegin extends DatagramPacket {
         super(rawPacket);
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
-        if (!readCode(dis).equals(packetCode)) {
-            throw new UnknownPacketException("Codice pacchetto in ingresso differente da "
-                    + packetCode);
+
+        String actualPacketCode = readPacketCode(dis);
+        if (!actualPacketCode.equals(packetCode)) {
+            throw new UnexpectedPacketException(packetCode,actualPacketCode);
         }
-        musicId = readWord(dis);
-        musicTitle = readString(dis);
+
+        musicId = read16BitsWord(dis);
+        musicTitle = readZeroTerminatedString(dis);
     }
 
     /**
@@ -60,9 +62,9 @@ public class PacketBegin extends DatagramPacket {
         out = new ByteArrayOutputStream(PACKET_LEN + musicTitle.length());
         dos = new DataOutputStream(out);
 
-        writeCode(dos, packetCode);
-        writeWord(dos, musicId);
-        writeString(dos, musicTitle);
+        writePacketCode(dos, packetCode);
+        write16BitsWord(dos, musicId);
+        writeZeroTerminatedString(dos, musicTitle);
         dos.flush();
 
         rawPacket = new java.net.DatagramPacket(out.toByteArray(), out.size(), groupAddress, groupPort);
