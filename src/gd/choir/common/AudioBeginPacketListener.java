@@ -3,7 +3,7 @@
  */
 package gd.choir.common;
 
-import gd.choir.proto.packets.audio.PacketBegin;
+import gd.choir.data.packet.datagram.audio.PacketBegin;
 
 /**
  * @author Giulio D'Ambrosio

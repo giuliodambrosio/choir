@@ -16,9 +16,9 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
 import gd.choir.common.PacketDispatcher;
-import gd.choir.proto.packets.audio.PacketBegin;
-import gd.choir.proto.packets.audio.PacketData;
-import gd.choir.proto.packets.audio.PacketEnd;
+import gd.choir.data.packet.datagram.audio.PacketBegin;
+import gd.choir.data.packet.datagram.audio.PacketDataChunk;
+import gd.choir.data.packet.datagram.audio.PacketEnd;
 
 /**
  * This class reads data from an audio file and sends it in packets
@@ -115,7 +115,7 @@ public class AudioPacketStreamWriter implements Runnable {
     @Override
     public final void run() {
         int size = -1;
-        PacketData pd;
+        PacketDataChunk pd;
         byte[] framebuf = null;
         AudioInputStream ais;
         AudioFormat af;
@@ -241,7 +241,7 @@ public class AudioPacketStreamWriter implements Runnable {
                         packetCount = 0;
                         lastFrameTimestamp = Calendar.getInstance().getTimeInMillis();
                     }
-                    pd = new PacketData(audioFile.getMusicId(), framebuf, (char) size, multicastGroupAddress, multicastGroupPort);
+                    pd = new PacketDataChunk(audioFile.getMusicId(), framebuf, (char) size, multicastGroupAddress, multicastGroupPort);
                     packetDispatcher.send(pd);
                 }
             } catch (IOException e) {

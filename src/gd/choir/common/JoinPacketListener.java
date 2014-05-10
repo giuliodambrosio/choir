@@ -3,12 +3,12 @@
  */
 package gd.choir.common;
 
-import gd.choir.proto.packets.PacketJoin;
+import gd.choir.data.packet.datagram.DatagramPacket;
 
 /**
  * @author Giulio D'Ambrosio
  */
 @FunctionalInterface
 public interface JoinPacketListener {
-    public void packetArrived(PacketJoin packet);
+    public void packetArrived(DatagramPacket.PacketJoin packet);
 }

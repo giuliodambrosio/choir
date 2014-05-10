@@ -9,12 +9,12 @@ import java.net.MulticastSocket;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import gd.choir.proto.packets.*;
-import gd.choir.proto.packets.PacketJoin;
-import gd.choir.proto.packets.Packet;
-import gd.choir.proto.packets.audio.PacketBegin;
-import gd.choir.proto.packets.audio.PacketData;
-import gd.choir.proto.packets.audio.PacketEnd;
+import gd.choir.data.packet.Packet;
+import gd.choir.data.packet.datagram.audio.PacketBegin;
+import gd.choir.data.packet.datagram.audio.PacketDataChunk;
+import gd.choir.data.packet.datagram.audio.PacketEnd;
+import gd.choir.data.packet.datagram.DatagramPacket;
+import gd.choir.data.packet.datagram.PacketHello;
 
 /**
  * This class deals with receiving and sending packets using a multicast group.
@@ -102,7 +102,7 @@ public class PacketDispatcher implements Runnable {
             notifyAvailablePacket(packet);
         } catch (SocketTimeoutException e) {
             // This is the heartbeat: a chance to check that the thread is still alive
-            // even if no packets are received
+            // even if no packet are received
         } catch (IOException e) {
             e.printStackTrace();
             alive = false;
@@ -212,20 +212,20 @@ public class PacketDispatcher implements Runnable {
 
     private void notifyAvailablePacket(DatagramPacket packet) {
 
-        if (packet instanceof PacketData) {
-            notifyAvailablePacket((PacketData) packet);
+        if (packet instanceof PacketDataChunk) {
+            notifyAvailablePacket((PacketDataChunk) packet);
         } else if (packet instanceof PacketBegin) {
             notifyAvailablePacket((PacketBegin) packet);
         } else if (packet instanceof PacketEnd) {
             notifyAvailablePacket((PacketEnd) packet);
-        } else if (packet instanceof PacketJoin) {
-            notifyAvailablePacket((PacketJoin) packet);
+        } else if (packet instanceof DatagramPacket.PacketJoin) {
+            notifyAvailablePacket((DatagramPacket.PacketJoin) packet);
         } else if (packet instanceof PacketHello) {
             notifyAvailablePacket((PacketHello) packet);
         }
     }
 
-    private void notifyAvailablePacket(PacketData packet) {
+    private void notifyAvailablePacket(PacketDataChunk packet) {
         synchronized (audioDataListeners) {
             for (AudioDataPacketListener l : audioDataListeners) {
                 l.packetArrived(packet);
@@ -249,7 +249,7 @@ public class PacketDispatcher implements Runnable {
         }
     }
 
-    private void notifyAvailablePacket(PacketJoin packet) {
+    private void notifyAvailablePacket(DatagramPacket.PacketJoin packet) {
         synchronized (joinListeners) {
             for (JoinPacketListener l : joinListeners) {
                 l.packetArrived(packet);

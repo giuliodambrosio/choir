@@ -1,7 +1,7 @@
 /**
  *
  */
-package gd.choir.proto.packets.audio;
+package gd.choir.data.packet.datagram.audio;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -11,8 +11,8 @@ import java.io.IOException;
 import java.net.InetAddress;
 
 import gd.choir.common.AudioFile;
-import gd.choir.proto.packets.DatagramPacket;
-import gd.choir.proto.packets.UnexpectedPacketException;
+import gd.choir.data.packet.datagram.DatagramPacket;
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 /**
  * Start audio stream packet
@@ -68,7 +68,6 @@ public class PacketBegin extends DatagramPacket {
         dos.flush();
 
         rawPacket = new java.net.DatagramPacket(out.toByteArray(), out.size(), groupAddress, groupPort);
-        inited = true;
 
     }
 

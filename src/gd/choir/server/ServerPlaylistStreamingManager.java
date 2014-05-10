@@ -11,9 +11,9 @@ import gd.choir.common.AudioBeginPacketListener;
 import gd.choir.common.AudioDataPacketListener;
 import gd.choir.common.AudioEndPacketListener;
 import gd.choir.common.PacketDispatcher;
-import gd.choir.proto.packets.audio.PacketBegin;
-import gd.choir.proto.packets.audio.PacketData;
-import gd.choir.proto.packets.audio.PacketEnd;
+import gd.choir.data.packet.datagram.audio.PacketBegin;
+import gd.choir.data.packet.datagram.audio.PacketDataChunk;
+import gd.choir.data.packet.datagram.audio.PacketEnd;
 
 /**
  * @author Giulio D'Ambrosio
@@ -84,7 +84,7 @@ public class ServerPlaylistStreamingManager implements AudioBeginPacketListener,
      * @param packet Il pacchetto arrivato
      */
     @Override
-    public final void packetArrived(final PacketData packet) {
+    public final void packetArrived(final PacketDataChunk packet) {
         if (currentlyStreamingAudioFile != null && currentlyStreamingAudioFile.getMusicId() == packet.musicId) {
             lastReceivedAudioPacketTimestamp = Calendar.getInstance().getTimeInMillis();
         }
@@ -120,8 +120,8 @@ public class ServerPlaylistStreamingManager implements AudioBeginPacketListener,
      * - Asks the owner client to start streaming it
      * - Follows the streaming checking that the client is not lagging too much (i.e.: no packets received for
      *   {@link ServerPlaylistStreamingManager#MAXIMUM_CLIENT_DELAY_TIMEOUT_MILLISECONDS} seconds)
-     * - If the client is lagging too much, interrupts the streaming by sending the packet {@link gd.choir.proto.packets.audio.PacketEnd}
-     *   that marks the end of the streaming for the current audio file
+     * - If the client is lagging too much, interrupts the streaming by sending the packet
+     *   {@link gd.choir.data.packet.datagram.audio.PacketEnd} that marks the end of the streaming for the current audio file
      */
     @Override
     public final void run() {

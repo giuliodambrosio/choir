@@ -1,7 +1,10 @@
 /**
  *
  */
-package gd.choir.proto.packets;
+package gd.choir.data.packet.stream;
+
+import gd.choir.data.packet.Packet;
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;

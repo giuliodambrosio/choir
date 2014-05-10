@@ -1,7 +1,7 @@
 /**
  *
  */
-package gd.choir.proto.packets;
+package gd.choir.data.packet.exceptions;
 
 import java.io.IOException;
 

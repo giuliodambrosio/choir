@@ -3,12 +3,12 @@
  */
 package gd.choir.common;
 
-import gd.choir.proto.packets.audio.PacketData;
+import gd.choir.data.packet.datagram.audio.PacketDataChunk;
 
 /**
  * @author Giulio D'Ambrosio
  */
 @FunctionalInterface
 public interface AudioDataPacketListener extends PacketListener {
-    public void packetArrived(PacketData packet);
+    public void packetArrived(PacketDataChunk packet);
 }

@@ -1,7 +1,7 @@
 /**
  *
  */
-package gd.choir.proto.packets.audio;
+package gd.choir.data.packet.datagram.audio;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,8 +10,8 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 
-import gd.choir.proto.packets.DatagramPacket;
-import gd.choir.proto.packets.UnexpectedPacketException;
+import gd.choir.data.packet.datagram.DatagramPacket;
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 /**
  * End of audio streaming packet.
@@ -61,7 +61,6 @@ public class PacketEnd extends DatagramPacket {
         dos.flush();
 
         rawPacket = new java.net.DatagramPacket(out.toByteArray(), PACKET_LEN, groupAddress, groupPort);
-        inited = true;
     }
 
     // return rawPacket.getAddress().toString()+String.valueOf(musicId);

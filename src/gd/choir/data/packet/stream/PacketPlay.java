@@ -1,7 +1,7 @@
 /**
  *
  */
-package gd.choir.proto.packets;
+package gd.choir.data.packet.stream;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -22,7 +22,6 @@ public class PacketPlay extends StreamPacket {
     public PacketPlay(char musicId) {
         super();
         this.musicId = musicId;
-        inited = true;
     }
 
     public void fromStream(DataInputStream dis) throws IOException {

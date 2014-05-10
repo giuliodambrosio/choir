@@ -13,11 +13,12 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
+import com.sun.istack.internal.NotNull;
 import gd.choir.common.AudioDataPacketListener;
 import gd.choir.common.AudioEndPacketListener;
 import gd.choir.common.PacketDispatcher;
-import gd.choir.proto.packets.audio.PacketData;
-import gd.choir.proto.packets.audio.PacketEnd;
+import gd.choir.data.packet.datagram.audio.PacketDataChunk;
+import gd.choir.data.packet.datagram.audio.PacketEnd;
 
 /**
  * Plays an audio file
@@ -68,12 +69,9 @@ public class AudioPlayer implements
      */
     private int maxBufferedSize;
 
-    /**
-     * Incoming packet stream
-     */
-    private final AudioPacketStreamReader incomingPacketStream;
+    private final @NotNull AudioChunksQueue incomingPackets = new AudioChunksQueue();
 
-    private PacketDispatcher demu;
+    private PacketDispatcher packetDispatcher;
 
     /**
      * Istanza del gestore della playlist del client.
@@ -88,24 +86,23 @@ public class AudioPlayer implements
                        final ClientPlaylistStreamingManager clientPlaylistStreamingManager) throws Exception {
         this.currentlyPlayingMusicId = currentlyPlayingMusicId;
         this.currentlyPlayingMusicTitle = currentlyPlayingMusicTitle;
-        this.demu = clientPlaylistStreamingManager.getIncomingPacketDispatcher();
+        this.packetDispatcher = clientPlaylistStreamingManager.getIncomingPacketDispatcher();
         this.clientPlaylistStreamingManager = clientPlaylistStreamingManager;
-        incomingPacketStream = new AudioPacketStreamReader();
-        demu.registerListener((AudioDataPacketListener) this);
-        demu.registerListener((AudioEndPacketListener) this);
+        packetDispatcher.registerListener((AudioDataPacketListener) this);
+        packetDispatcher.registerListener((AudioEndPacketListener) this);
     }
 
     /**
      * Ultime operazioni di pulizia. Se non era stato fatto precedentemente,
      * viene rimosso questo oggetto dagli ascoltatori registrati in
-     * {@link #demu}
+     * {@link #packetDispatcher}
      *
      * @throws Throwable
      */
     protected final void finalize() throws Throwable {
         super.finalize();
-        demu.unregisterListener((AudioEndPacketListener) this);
-        demu.unregisterListener((AudioDataPacketListener) this);
+        packetDispatcher.unregisterListener((AudioEndPacketListener) this);
+        packetDispatcher.unregisterListener((AudioDataPacketListener) this);
     }
 
     /**
@@ -135,7 +132,7 @@ public class AudioPlayer implements
         AudioFormat af;
         int bufferSize;
         try {
-            ais = AudioSystem.getAudioInputStream(incomingPacketStream);
+            ais = AudioSystem.getAudioInputStream(new AudioPacketInputStream(incomingPackets));
             af = ais.getFormat();
             sdl = AudioSystem.getSourceDataLine(af);
 
@@ -170,16 +167,10 @@ public class AudioPlayer implements
             System.err.println(e.getMessage());
         } finally {
             if (!success) {
-                System.err.printf(
-                        "Could not play streaming audio for: %s"
-                                + currentlyPlayingMusicTitle
-                );
+                System.err.printf("Could not play streaming audio for: %s", currentlyPlayingMusicTitle);
                 System.out.println();
             } else {
-                System.out.printf(
-                        "Playing streaming audio for: %s",
-                        currentlyPlayingMusicTitle
-                );
+                System.out.printf("Playing streaming audio for: %s", currentlyPlayingMusicTitle);
                 System.out.println();
             }
         }
@@ -192,13 +183,9 @@ public class AudioPlayer implements
      * riproduzione audio è in modalità {@link #buffering}.
      */
     @Override
-    public final void packetArrived(final PacketData packet) {
+    public final void packetArrived(final PacketDataChunk packet) {
         if (alive && packet.musicId == currentlyPlayingMusicId) {
-            try {
-                incomingPacketStream.addPacket(packet.audioData, packet.audioData.length);
-            } catch (Exception e) {
-                alive = false;
-            }
+            incomingPackets.addAudioChunkData(packet.audioData, packet.audioData.length);
             if (buffering || !alive) {
                 synchronized (this) {
                     notify();
@@ -215,7 +202,7 @@ public class AudioPlayer implements
     @Override
     public final void packetArrived(final PacketEnd packet) {
         if (alive && packet.musicId == currentlyPlayingMusicId) {
-            incomingPacketStream.setCompleted();
+            incomingPackets.close();
             if (buffering) {
                 synchronized (this) {
                     notify();
@@ -233,10 +220,8 @@ public class AudioPlayer implements
      */
     public final void stop() throws InterruptedException, IOException {
         System.err.println("AudioPlayer is stopping...");
-        synchronized (incomingPacketStream) {
-            alive = false;
-            incomingPacketStream.close();
-        }
+        alive = false;
+        incomingPackets.close();
         synchronized (this) {
             notify();
         }
@@ -268,8 +253,8 @@ public class AudioPlayer implements
 
                 while (alive && l >= 0) {
                     if (alive
-                            && (buffering = !incomingPacketStream.isCompleted()
-                            && incomingPacketStream.available() < minBufferedSize)) {
+                            && (buffering = !incomingPackets.isClosed()
+                            && incomingPackets.getNextAvailableOriginOffset() < minBufferedSize)) {
                         // Quando i dati disponibili scendono sotto la soglia
                         // minima, riattende la bufferizzazione del
                         // massimo del buffer
@@ -278,7 +263,7 @@ public class AudioPlayer implements
                             if (dotcount == 0) {
                                 System.err.printf(
                                         "AudioPlayer: filling up the buffer with %d Kb",
-                                        (maxBufferedSize - incomingPacketStream.available()) / 1024
+                                        (maxBufferedSize - incomingPackets.getNextAvailableOriginOffset()) / 1024
                                 );
                                 System.err.println();
                             } else if (dotcount % 780 == 0) {
@@ -289,8 +274,8 @@ public class AudioPlayer implements
                             synchronized (this) {
                                 wait();
                             }
-                            if (!(buffering = !incomingPacketStream.isCompleted()
-                                    && incomingPacketStream.available() < maxBufferedSize)) {
+                            if (!(buffering = !incomingPackets.isClosed()
+                                    && incomingPackets.getNextAvailableOriginOffset() < maxBufferedSize)) {
                                 sdl.start();
                                 System.err.println("\n\tstarting playback");
                             }
@@ -316,19 +301,15 @@ public class AudioPlayer implements
             }
             sdl.stop();
             sdl.close();
-            try {
-                incomingPacketStream.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            incomingPackets.close();
             System.out.printf(
                     "Streaming completed for '%s'",
                     currentlyPlayingMusicTitle
             );
             System.out.println();
         }
-        demu.unregisterListener((AudioEndPacketListener) this);
-        demu.unregisterListener((AudioDataPacketListener) this);
+        packetDispatcher.unregisterListener((AudioEndPacketListener) this);
+        packetDispatcher.unregisterListener((AudioDataPacketListener) this);
         destroy();
     }
 }

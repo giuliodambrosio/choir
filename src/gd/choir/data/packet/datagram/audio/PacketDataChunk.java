@@ -1,7 +1,7 @@
 /**
  *
  */
-package gd.choir.proto.packets.audio;
+package gd.choir.data.packet.datagram.audio;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,14 +10,14 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 
-import gd.choir.proto.packets.DatagramPacket;
-import gd.choir.proto.packets.UnexpectedPacketException;
+import gd.choir.data.packet.datagram.DatagramPacket;
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 /**
  * Audio frame packet
  * @author Giulio D'Ambrosio
  */
-public class PacketData extends DatagramPacket {
+public class PacketDataChunk extends DatagramPacket {
     public static final String packetCode = "DATA";
     private static final char PACKET_LEN = 8;
 
@@ -31,7 +31,7 @@ public class PacketData extends DatagramPacket {
      * @param rawPacket Il pacchetto udp associato
      * @throws IOException
      */
-    public PacketData(java.net.DatagramPacket rawPacket) throws IOException {
+    public PacketDataChunk(java.net.DatagramPacket rawPacket) throws IOException {
         super(rawPacket);
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
@@ -59,8 +59,8 @@ public class PacketData extends DatagramPacket {
      * @param groupAddress indirizzo del gruppo multicast
      * @throws IOException
      */
-    public PacketData(char musicId, byte[] audioData, char size,
-                      InetAddress groupAddress, int groupPort) throws IOException {
+    public PacketDataChunk(char musicId, byte[] audioData, char size,
+                           InetAddress groupAddress, int groupPort) throws IOException {
         super();
         byte[] buf;
         ByteArrayOutputStream out = new ByteArrayOutputStream(totLength = (char) (PACKET_LEN + size));
@@ -77,6 +77,5 @@ public class PacketData extends DatagramPacket {
 
         buf = out.toByteArray();
         rawPacket = new java.net.DatagramPacket(buf, buf.length, groupAddress, groupPort);
-        inited = true;
     }
 }

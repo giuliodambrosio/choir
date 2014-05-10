@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import gd.choir.client.Client;
 import gd.choir.common.PacketDispatcher;
 import gd.choir.common.JoinPacketListener;
-import gd.choir.proto.packets.PacketHello;
-import gd.choir.proto.packets.PacketJoin;
+import gd.choir.data.packet.datagram.DatagramPacket;
+import gd.choir.data.packet.datagram.PacketHello;
 
 /**
  * Thread principale del server. Ascolta il socket multicast in attesa di
@@ -131,7 +131,7 @@ public class ServerMain implements JoinPacketListener, Runnable {
         }
     }
 
-    public final void packetArrived(PacketJoin packet) {
+    public final void packetArrived(DatagramPacket.PacketJoin packet) {
         InetAddress clientAddress;
 
         try {

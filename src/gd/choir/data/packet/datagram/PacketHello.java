@@ -1,7 +1,9 @@
 /**
  *
  */
-package gd.choir.proto.packets;
+package gd.choir.data.packet.datagram;
+
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 import java.net.*;
 import java.io.*;
@@ -12,7 +14,7 @@ import java.io.*;
  *
  * @author Giulio D'Ambrosio
  */
-public class PacketHello extends DatagramPacket {
+public class PacketHello extends gd.choir.data.packet.datagram.DatagramPacket {
     public static final String packetCode = "HELO";
     public int PACKET_LEN = 10;
 
@@ -22,7 +24,6 @@ public class PacketHello extends DatagramPacket {
     public PacketHello(java.net.DatagramPacket rawPacket) throws IOException {
         super(rawPacket);
         byte rawAddress[] = new byte[4];
-        String rc;
         ByteArrayInputStream in = new ByteArrayInputStream(rawPacket.getData());
         DataInputStream dis = new DataInputStream(in);
 
@@ -50,6 +51,5 @@ public class PacketHello extends DatagramPacket {
         write16BitsWord(dos, serverPort);
         dos.flush();
         rawPacket = new java.net.DatagramPacket(out.toByteArray(), PACKET_LEN, groupAddress, groupPort);
-        inited = true;
     }
 }

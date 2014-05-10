@@ -12,9 +12,9 @@ import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 
-import gd.choir.proto.packets.PacketMusic;
-import gd.choir.proto.packets.PacketPlay;
-import gd.choir.proto.packets.UnexpectedPacketException;
+import gd.choir.data.packet.stream.PacketMusic;
+import gd.choir.data.packet.stream.PacketPlay;
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 /**
  * @author Giulio D'Ambrosio

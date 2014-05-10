@@ -11,7 +11,7 @@ import java.util.concurrent.Executors;
 
 import gd.choir.common.PacketDispatcher;
 import gd.choir.common.AudioBeginPacketListener;
-import gd.choir.proto.packets.audio.PacketBegin;
+import gd.choir.data.packet.datagram.audio.PacketBegin;
 
 /**
  * Gestore della playlist di riproduzione brani. Si occupa di riprodurre un file

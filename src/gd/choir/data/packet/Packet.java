@@ -1,7 +1,7 @@
 /**
  *
  */
-package gd.choir.proto.packets;
+package gd.choir.data.packet;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -10,8 +10,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * gd.choir protocol packet.
- *
  * @author Giulio D'Ambrosio
  */
 abstract public class Packet {
@@ -19,12 +17,6 @@ abstract public class Packet {
      * This value needs to be less than 65535 - udp header size - ip header size
      */
     public static final int MAX_PACKET_PAYLOAD_SIZE = 64 * 1024;
-
-    /**
-     * Flag: è true quando l'istanza è stata creata (in ricezione o in
-     * spedizione).
-     */
-    protected boolean inited = false;
 
     /**
      * Converts a packet to a string: just for debugging purposes

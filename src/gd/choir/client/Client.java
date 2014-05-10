@@ -17,8 +17,11 @@ import java.util.Calendar;
 import java.util.concurrent.ConcurrentHashMap;
 
 import gd.choir.common.PacketDispatcher;
-import gd.choir.proto.packets.*;
-import gd.choir.proto.packets.Packet;
+import gd.choir.data.packet.datagram.PacketHello;
+import gd.choir.data.packet.exceptions.UnexpectedPacketException;
+import gd.choir.data.packet.Packet;
+import gd.choir.data.packet.stream.PacketMusic;
+import gd.choir.data.packet.stream.PacketPlay;
 
 /**
  * Classe principale del client.
@@ -181,11 +184,11 @@ public class Client implements Runnable {
             }
 
             private void sendJoinMessage() {
-                PacketJoin pktJoin;
+                gd.choir.data.packet.datagram.DatagramPacket.PacketJoin pktJoin;
 
                 if (isTimestampAtLeastOneSecondOld(lastJoinMessageSentTimestamp)) {
                     try {
-                        pktJoin = new PacketJoin(multicastGroupAddress, multicastGroupPort);
+                        pktJoin = new gd.choir.data.packet.datagram.DatagramPacket.PacketJoin(multicastGroupAddress, multicastGroupPort);
                         Client.this.multicastSocket.send(pktJoin.getRawPacket());
                         System.err.println("join request sent");
                         lastJoinMessageSentTimestamp = Calendar.getInstance().getTimeInMillis();
