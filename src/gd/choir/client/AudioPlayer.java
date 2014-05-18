@@ -85,6 +85,7 @@ public class AudioPlayer implements
 
     public AudioPlayer(final char currentlyPlayingMusicId, final String currentlyPlayingMusicTitle,
                        final ClientPlaylistStreamingManager clientPlaylistStreamingManager) throws Exception {
+        super();
         this.currentlyPlayingMusicId = currentlyPlayingMusicId;
         this.currentlyPlayingMusicTitle = currentlyPlayingMusicTitle;
         this.packetDispatcher = clientPlaylistStreamingManager.getIncomingPacketDispatcher();

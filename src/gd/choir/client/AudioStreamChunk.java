@@ -3,16 +3,14 @@ package gd.choir.client;
 import com.sun.istack.internal.NotNull;
 
 public class AudioStreamChunk {
-    long startStreamOffset;
-    long endStreamOffset;
+    @NotNull
     byte[] data;
     long dataLength;
+    long startStreamOffset;
+    long endStreamOffset;
 
     public AudioStreamChunk(@NotNull byte[] data, long dataLength, long startStreamOffset) {
-        if (data == null) {
-            throw new NullPointerException();
-        }
-
+        super();
         this.data = data;
         this.dataLength = dataLength;
         this.startStreamOffset = startStreamOffset;

@@ -1,5 +1,3 @@
-/**
- */
 package gd.choir.client;
 
 import com.sun.istack.internal.NotNull;
@@ -15,16 +13,21 @@ import java.io.InputStream;
  * @author Giulio D'Ambrosio
  */
 public class AudioPacketInputStream extends InputStream {
-    public AudioPacketInputStream(AudioStreamChunksQueue audioStreamChunksQueue) {
-        chunksQueue = audioStreamChunksQueue;
-    }
+
+    private
+    @NotNull
+    AudioStreamChunksQueue chunksQueue;
+
+    private
+    @Nullable
+    RollbackMark rollbackMark = null;
 
     private long streamOffset = 0L;
 
-    /** Used to implement {@link AudioPacketInputStream#mark(int)} */
-    private @Nullable RollbackMark rollbackMark = null;
-
-    private @NotNull AudioStreamChunksQueue chunksQueue;
+    public AudioPacketInputStream(@NotNull AudioStreamChunksQueue audioStreamChunksQueue) {
+        super();
+        chunksQueue = audioStreamChunksQueue;
+    }
 
     /**
      * @see java.io.InputStream#read()
@@ -117,7 +120,7 @@ public class AudioPacketInputStream extends InputStream {
      * and behind the optional limit previously set by calling {@link AudioPacketInputStream#mark(int)}
      */
     private void freeUnreachableAudioChunksInQueue() {
-        if (rollbackMark == null || ! rollbackMark.isStillReachableAtOffset(streamOffset)) {
+        if (rollbackMark == null || !rollbackMark.isStillReachableAtOffset(streamOffset)) {
             chunksQueue.freeChunksBehindStreamOffset(streamOffset);
         } else {
             chunksQueue.freeChunksBehindStreamOffset(rollbackMark.markedOffset - 1);
@@ -132,6 +135,7 @@ public class AudioPacketInputStream extends InputStream {
     private class RollbackMark {
         public long markedOffset;
         public long maxReachableDistanceFromMarkedOffset;
+
         public RollbackMark(long markedOffset, long maxReachableDistanceFromMarkedOffset) {
             this.markedOffset = markedOffset;
             this.maxReachableDistanceFromMarkedOffset = maxReachableDistanceFromMarkedOffset;
