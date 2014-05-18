@@ -9,54 +9,31 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Serve i dati come un input stream, mentre li riceve come pacchetti I
- * pacchetti già letti e non marcati (rollbackMarkedOffset, rollbackMarkedOffsetMaxDistance), vengono rimossi
- * dal vettore dei pacchetti, permettendo al garbage collector di liberare la
- * memoria. I pacchetti vengono copiati in una coda di buffer di dimensione
- * parametrica.
+ * This class reads packets from an audio stream chunks queue and provides a continuous stream
+ * of data to be read
  *
- * This class transform an incoming packet stream
  * @author Giulio D'Ambrosio
  */
 public class AudioPacketInputStream extends InputStream {
-    public AudioPacketInputStream(AudioChunksQueue audioChunksQueue) {
-        chunksQueue = audioChunksQueue;
-    }
-    /**
-     * This class is used to mark a rollback position in this input stream.
-     * The rollback is available until the current position in the stream exceeds the maximum distance allowed
-     * from the rollback position.
-     */
-    private class RollbackMark {
-        public long markedOffset;
-        public long maxReachableDistanceFromMarkedOffset;
-        public RollbackMark(long markedOffset, long maxReachableDistanceFromMarkedOffset) {
-            this.markedOffset = markedOffset;
-            this.maxReachableDistanceFromMarkedOffset = maxReachableDistanceFromMarkedOffset;
-        }
-
-        public boolean isStillReachableAtOffset(long offset) {
-            return markedOffset + maxReachableDistanceFromMarkedOffset >= offset;
-        }
+    public AudioPacketInputStream(AudioStreamChunksQueue audioStreamChunksQueue) {
+        chunksQueue = audioStreamChunksQueue;
     }
 
     private long streamOffset = 0L;
 
-    /**
-     * Used to implement {@link AudioPacketInputStream#mark(int)}
-     */
+    /** Used to implement {@link AudioPacketInputStream#mark(int)} */
     private @Nullable RollbackMark rollbackMark = null;
 
-    private @NotNull AudioChunksQueue chunksQueue;
+    private @NotNull AudioStreamChunksQueue chunksQueue;
 
     /**
      * @see java.io.InputStream#read()
      */
     @Override
     public int read() throws IOException {
-        AudioChunk audioChunk = chunksQueue.getOrWaitForChunkContainingOriginOffset(streamOffset);
-        if (audioChunk != null) {
-            int result = audioChunk.getByteAtOriginOffset(streamOffset++);
+        AudioStreamChunk audioStreamChunk = chunksQueue.getOrWaitForChunkContainingStreamOffset(streamOffset);
+        if (audioStreamChunk != null) {
+            int result = audioStreamChunk.getByteAtStreamOffset(streamOffset++);
             freeUnreachableAudioChunksInQueue();
             return result;
         } else {
@@ -80,9 +57,9 @@ public class AudioPacketInputStream extends InputStream {
         }
 
         while (bufferOffset < maxRequestedLength) {
-            AudioChunk audioChunk = chunksQueue.getOrWaitForChunkContainingOriginOffset(streamOffset);
-            if (audioChunk != null) {
-                int copiedBytes = audioChunk.copyDataAtOriginOffset(streamOffset, buffer, bufferOffset, maxRequestedLength);
+            AudioStreamChunk audioStreamChunk = chunksQueue.getOrWaitForChunkContainingStreamOffset(streamOffset);
+            if (audioStreamChunk != null) {
+                int copiedBytes = audioStreamChunk.copyDataAtStreamOffset(streamOffset, buffer, bufferOffset, maxRequestedLength);
                 maxRequestedLength -= copiedBytes;
                 resultLength += copiedBytes;
                 bufferOffset += copiedBytes;
@@ -98,20 +75,10 @@ public class AudioPacketInputStream extends InputStream {
     }
 
     /**
-     * Frees all the packet that can't be reached anymore because already read
-     * and behind the optional limit previously set by calling {@link AudioPacketInputStream#mark(int)}
-     */
-    private void freeUnreachableAudioChunksInQueue() {
-        if (rollbackMark == null || ! rollbackMark.isStillReachableAtOffset(streamOffset)) {
-            chunksQueue.freeChunksBehindOriginOffset(streamOffset);
-        }
-    }
-
-    /**
      * @see java.io.InputStream#available()
      */
     public int available() throws IOException {
-        return (int) (chunksQueue.getNextAvailableOriginOffset() - streamOffset);
+        return (int) (chunksQueue.getNextAvailableStreamOffset() - streamOffset);
     }
 
     /**
@@ -143,5 +110,35 @@ public class AudioPacketInputStream extends InputStream {
      */
     public boolean markSupported() {
         return true;
+    }
+
+    /**
+     * Frees all the packet that can't be reached anymore because already read
+     * and behind the optional limit previously set by calling {@link AudioPacketInputStream#mark(int)}
+     */
+    private void freeUnreachableAudioChunksInQueue() {
+        if (rollbackMark == null || ! rollbackMark.isStillReachableAtOffset(streamOffset)) {
+            chunksQueue.freeChunksBehindStreamOffset(streamOffset);
+        } else {
+            chunksQueue.freeChunksBehindStreamOffset(rollbackMark.markedOffset - 1);
+        }
+    }
+
+    /**
+     * This class is used to mark a rollback position in this input stream.
+     * The rollback is available until the current position in the stream exceeds the maximum distance allowed
+     * from the rollback position.
+     */
+    private class RollbackMark {
+        public long markedOffset;
+        public long maxReachableDistanceFromMarkedOffset;
+        public RollbackMark(long markedOffset, long maxReachableDistanceFromMarkedOffset) {
+            this.markedOffset = markedOffset;
+            this.maxReachableDistanceFromMarkedOffset = maxReachableDistanceFromMarkedOffset;
+        }
+
+        public boolean isStillReachableAtOffset(long offset) {
+            return markedOffset + maxReachableDistanceFromMarkedOffset >= offset;
+        }
     }
 }

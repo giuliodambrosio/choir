@@ -69,7 +69,8 @@ public class AudioPlayer implements
      */
     private int maxBufferedSize;
 
-    private final @NotNull AudioChunksQueue incomingPackets = new AudioChunksQueue();
+    private final @NotNull
+    AudioStreamChunksQueue incomingPackets = new AudioStreamChunksQueue();
 
     private PacketDispatcher packetDispatcher;
 
@@ -254,7 +255,7 @@ public class AudioPlayer implements
                 while (alive && l >= 0) {
                     if (alive
                             && (buffering = !incomingPackets.isClosed()
-                            && incomingPackets.getNextAvailableOriginOffset() < minBufferedSize)) {
+                            && incomingPackets.getNextAvailableStreamOffset() < minBufferedSize)) {
                         // Quando i dati disponibili scendono sotto la soglia
                         // minima, riattende la bufferizzazione del
                         // massimo del buffer
@@ -263,7 +264,7 @@ public class AudioPlayer implements
                             if (dotcount == 0) {
                                 System.err.printf(
                                         "AudioPlayer: filling up the buffer with %d Kb",
-                                        (maxBufferedSize - incomingPackets.getNextAvailableOriginOffset()) / 1024
+                                        (maxBufferedSize - incomingPackets.getNextAvailableStreamOffset()) / 1024
                                 );
                                 System.err.println();
                             } else if (dotcount % 780 == 0) {
@@ -275,7 +276,7 @@ public class AudioPlayer implements
                                 wait();
                             }
                             if (!(buffering = !incomingPackets.isClosed()
-                                    && incomingPackets.getNextAvailableOriginOffset() < maxBufferedSize)) {
+                                    && incomingPackets.getNextAvailableStreamOffset() < maxBufferedSize)) {
                                 sdl.start();
                                 System.err.println("\n\tstarting playback");
                             }
