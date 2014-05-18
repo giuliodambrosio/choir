@@ -16,12 +16,15 @@ import java.net.SocketTimeoutException;
 import java.util.Calendar;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.sun.istack.internal.NotNull;
 import gd.choir.common.PacketDispatcher;
 import gd.choir.data.packet.datagram.PacketHello;
 import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 import gd.choir.data.packet.Packet;
 import gd.choir.data.packet.stream.PacketMusic;
 import gd.choir.data.packet.stream.PacketPlay;
+
+import javax.sound.sampled.UnsupportedAudioFileException;
 
 /**
  * Classe principale del client.
@@ -33,18 +36,22 @@ public class Client implements Runnable {
 
     private static final int AUDIO_FILES_HASH_MAP_SIZE = 512;
 
+    @NotNull
     private PacketDispatcher packetDispatcher;
 
     private MulticastSocket multicastSocket = null;
 
+    @NotNull
     private InetAddress multicastGroupAddress;
 
     private char multicastGroupPort;
 
+    @NotNull
     private Socket serverSocket;
 
     private DataOutputStream serverStream;
 
+    @NotNull
     private InetAddress serverAddress;
 
     private char serverPort;
@@ -104,8 +111,14 @@ public class Client implements Runnable {
      * @param audioPath       Percorso dei file audio da rendere disponibili al gruppo
      * @throws IOException
      */
-    public Client(final String strGroupAddress, final char multicastGroupPort, final String audioPath)
-            throws IOException {
+    public Client(
+            @NotNull
+            final String strGroupAddress,
+            @NotNull
+            final char multicastGroupPort,
+            @NotNull
+            final String audioPath
+    ) throws IOException {
         super();
         File aPath = new File(audioPath);
         if (!aPath.isDirectory()) {
@@ -232,10 +245,10 @@ public class Client implements Runnable {
                     pktPlay.fromStream(new DataInputStream(serverSocket.getInputStream()));
                     if ((audioFile = getAudioFile(pktPlay.musicId)) != null) {
                         if (audioPacketStreamWriter != null && audioPacketStreamWriter.isAlive()) {
-                            audioPacketStreamWriter.stop();
+                            audioPacketStreamWriter.stopThread();
                         }
-                        audioPacketStreamWriter = new AudioPacketStreamWriter(multicastGroupAddress, multicastGroupPort, audioFile, getPacketDispatcher());
-                        audioPacketStreamWriter.start();
+                        audioPacketStreamWriter = new AudioPacketStreamWriter(audioFile, getPacketDispatcher(), multicastGroupAddress, multicastGroupPort);
+                        audioPacketStreamWriter.startThread();
                     } else {
                         System.err.println("Stale audio file requested: "
                                 + pktPlay.musicId);
@@ -249,6 +262,8 @@ public class Client implements Runnable {
                 } catch (IOException e) {
                     e.printStackTrace();
                     alive = false;
+                } catch (UnsupportedAudioFileException e) {
+                    System.err.println("Could not start audio streaming: " + e.getMessage());
                 }
             }
             try {
@@ -389,7 +404,7 @@ public class Client implements Runnable {
             clientPlaylistStreamingManager.stop();
         }
         if (audioPacketStreamWriter != null) {
-            audioPacketStreamWriter.stop();
+            audioPacketStreamWriter.stopThread();
         }
         if (packetDispatcher != null) {
             packetDispatcher.stopNow();

@@ -41,7 +41,7 @@ public class AudioPlayer implements
     private static final int MAX_BUFFERED_FRAMES_TO_COLLECT_BEFORE_PLAYING = 4;
 
     /**
-     * This flag is used to stop thread execution
+     * This flag is used to stopThread thread execution
      */
     private boolean alive = true;
 

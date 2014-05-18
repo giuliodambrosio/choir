@@ -16,6 +16,7 @@ import gd.choir.data.packet.exceptions.UnexpectedPacketException;
 
 /**
  * Start audio stream packet
+ *
  * @author Giulio D'Ambrosio
  */
 public class PacketBegin extends DatagramPacket {
@@ -38,7 +39,7 @@ public class PacketBegin extends DatagramPacket {
 
         String actualPacketCode = readPacketCode(dis);
         if (!actualPacketCode.equals(packetCode)) {
-            throw new UnexpectedPacketException(packetCode,actualPacketCode);
+            throw new UnexpectedPacketException(packetCode, actualPacketCode);
         }
 
         musicId = read16BitsWord(dis);
@@ -50,8 +51,11 @@ public class PacketBegin extends DatagramPacket {
      *
      * @throws IOException
      */
-    public PacketBegin(AudioFile audioFile, InetAddress groupAddress,
-                       int groupPort) throws IOException {
+    public PacketBegin(
+            AudioFile audioFile,
+            InetAddress groupAddress,
+            int groupPort
+    ) throws IOException {
         super();
         ByteArrayOutputStream out;
         DataOutputStream dos;
@@ -68,7 +72,5 @@ public class PacketBegin extends DatagramPacket {
         dos.flush();
 
         rawPacket = new java.net.DatagramPacket(out.toByteArray(), out.size(), groupAddress, groupPort);
-
     }
-
 }

@@ -1,43 +1,29 @@
-/**
- *
- */
 package gd.choir.client;
 
-import java.io.BufferedInputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
-import java.util.Calendar;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
+import com.sun.istack.internal.NotNull;
 import gd.choir.common.PacketDispatcher;
 import gd.choir.data.packet.datagram.audio.PacketBegin;
 import gd.choir.data.packet.datagram.audio.PacketDataChunk;
 import gd.choir.data.packet.datagram.audio.PacketEnd;
 
 /**
- * This class reads data from an audio file and sends it in packets
- * through the {@link PacketDispatcher}
+ * This class uses a {@link AudioFileStreamingPlan} to split an audio file
+ * in small chunks and send them at the right rate through the {@link PacketDispatcher}
  *
  * @author Giulio D'Ambrosio
  */
 public class AudioPacketStreamWriter implements Runnable {
-    private static final int AUDIOPACKET_PAYLOAD_SIZE = 1000;
 
-    /**
-     * Flag: se false questo task è in chiusura.
-     */
-    private boolean alive = true;
+    private boolean alive = false;
 
-    /**
-     * Audio file da mandare in streaming.
-     */
     private ClientAudioFile audioFile;
+
+    private final AudioFileStreamingPlan streamingPlan;
 
     private InetAddress multicastGroupAddress;
 
@@ -46,224 +32,102 @@ public class AudioPacketStreamWriter implements Runnable {
     private PacketDispatcher packetDispatcher;
 
     /**
-     * Thread principale associato a questa istanza.
+     * The thread for this runnable
      */
     private Thread runningThread = null;
 
-    /**
-     * Costruttore.
-     *
-     * @throws IOException
-     */
-    public AudioPacketStreamWriter(final InetAddress multicastGroupAddress, final char multicastGroupPort,
-                                   final ClientAudioFile audioFile, PacketDispatcher packetDispatcher)
-            throws IOException {
+    public AudioPacketStreamWriter(
+            @NotNull final ClientAudioFile audioFile,
+            @NotNull PacketDispatcher packetDispatcher,
+            @NotNull final InetAddress multicastGroupAddress,
+            @NotNull final char multicastGroupPort
+    ) throws IOException, UnsupportedAudioFileException {
         super();
         this.multicastGroupAddress = multicastGroupAddress;
         this.multicastGroupPort = multicastGroupPort;
         this.audioFile = audioFile;
         this.packetDispatcher = packetDispatcher;
+        streamingPlan = new AudioFileStreamingPlan(audioFile);
+        streamingPlan.outputAudioFileStreamingInfo();
     }
 
     /**
-     * @param runningThread il thread che esegue questo task
-     */
-    public final void setRunningThread(final Thread runningThread) {
-        this.runningThread = runningThread;
-    }
-
-    /**
-     * @return il thread associato
-     */
-    public final Thread getRunningThread() {
-        return runningThread;
-    }
-
-    /**
-     * @return lo stato del thread principale
+     * @return true if the thread for this runnable is currently alive
      */
     public final boolean isAlive() {
         return runningThread != null && runningThread.isAlive();
     }
 
-    public final void stop() {
-        alive = false;
-        if (!isAlive()) {
-            return;
-        }
-        runningThread.interrupt();
-        try {
-            runningThread.join();
-        } catch (InterruptedException e) {
-        }
-    }
-
     /**
      * Creates and starts a thread for this task
      */
-    public final void start() {
+    public final void startThread() {
+        alive = true;
         runningThread = new Thread(this);
         runningThread.start();
     }
 
     /**
-     * Manda i dati audio in streaming su socket multicast fino al termine del
-     * brano. Nel caso di un errore, viene comunque spedito il pacchetto ENDF
-     *
+     * Causes the thread for this runnable to stop
+     */
+    public final void stopThread() {
+        alive = false;
+        runningThread.interrupt();
+    }
+
+    /**
      * @see java.lang.Runnable#run()
      */
     @Override
     public final void run() {
-        int size = -1;
-        PacketDataChunk pd;
-        byte[] framebuf = null;
-        AudioInputStream ais;
-        AudioFormat af;
-        InputStream fr = null;
-        long lastTimestamp = 0L, // timestamp dell'ultimo pacchetto inviato
-                lastFrameTimestamp = 0L, // timestamp dell'ultimo frame inviato
-                toSleep; // numero di millisecondi da attendere
-        int frameSize = 0, // dimensione in bytes di un frame
-                packetRate = 0, // numero di pacchetti da inviare ogni secondo
-                packetIntvTime = 0, // intervallo in millisecondi fra l'invio di
-                // pacchetti
-                packetSize = 0, // dimensione in bytes di un pacchetto
-                packetCount = 0; // contatore del numero di pacchetti inviati (resettato
-        // ad ogni frame)
-        double syncInterval = 0d; // Contiene il ritardo in aggiunta / difetto
-        // per pacchetto, calcolato di frame in
-        // frame
-        double frameBytesPerMs = 0; // Bytes x millisecondo originale
+        PacketDataChunk dataChunk;
 
-        // Thread.currentThread().setPriority(Thread.MAX_PRIORITY);
+        notifyBeginOfStreaming();
 
-        try {
-            packetDispatcher.send(new PacketBegin(audioFile, multicastGroupAddress, multicastGroupPort));
-            ais = AudioSystem.getAudioInputStream(audioFile.getFile());
-            fr = new BufferedInputStream(new FileInputStream(audioFile.getFile()));
-            af = ais.getFormat();
-            if (af.getFrameSize() == AudioSystem.NOT_SPECIFIED) {
-                throw new UnsupportedAudioFileException("Frame size is not specified in the audio file");
-            } else {
-                frameSize = af.getFrameSize();
-            }
-            if (af.getFrameRate() != AudioSystem.NOT_SPECIFIED) {
-                frameSize *= (int) af.getFrameRate();
-            }
-            ais.close();
-            frameBytesPerMs = frameSize / 1000.d;
-
-            // Scelta della frequenza e dimensione dei pacchetti audio in cui
-            // suddividere ogni frame:
-            packetRate = (int) Math.round(((double) frameSize)
-                    / AUDIOPACKET_PAYLOAD_SIZE);
-            packetSize = (int) Math.ceil(((double) frameSize) / packetRate);
-            packetIntvTime = (int) Math.floor(1000.0d / packetRate);
-            syncInterval = (((packetRate * packetSize - frameSize) / frameBytesPerMs))
-                    / packetRate;
-            framebuf = new byte[packetSize];
-            System.err.printf(
-                    "Starting streaming: '%s' (id=%d)",
-                    audioFile.getMusicTitle(),
-                    (int) audioFile.getMusicId()
-            );
-            System.err.println();
-            System.err.printf(
-                    "\taudio kbps: %f",
-                    (af.getChannels() * af.getSampleSizeInBits() * af.getSampleRate()) / 1000
-            );
-            System.err.println();
-            System.err.printf(
-                    "\tframe size: %d. frame rate: %f, frame KBps: %f",
-                    af.getFrameSize(),
-                    af.getFrameRate(),
-                    (frameBytesPerMs * 1000) / 1024
-            );
-            System.err.println();
-            System.err.printf(
-                    "\tpacket rate: %d, payload size: %d",
-                    packetRate,
-                    packetSize
-            );
-            System.err.println();
-            System.err.printf(
-                    "\tpacket intv.: %d, packet sync intv.: %.2f",
-                    packetIntvTime,
-                    syncInterval
-            );
-            System.err.println();
-        } catch (IOException e) {
-            alive = false;
-            e.printStackTrace();
-            System.err.println(getClass() + " : errore i/o");
-        } catch (UnsupportedAudioFileException e) {
-            alive = false;
-            System.err.println(getClass() + " : audio file non supportato");
-        }
-        // try {
-        // fw=new BufferedOutputStream(new
-        // FileOutputStream(audioFile.getFile().getName()));
-        // } catch (FileNotFoundException e1) {
-        // e1.printStackTrace();
-        // }
         while (alive) {
             try {
-                if (alive = alive
-                        && (size = fr.read(framebuf, 0, framebuf.length)) >= 0) {
-                    // fw.write(framebuf,0,size);
-                    if (lastTimestamp != 0
-                            && (toSleep = (int) Math.round(syncInterval
-                            + packetIntvTime
-                            - (Calendar.getInstance().getTimeInMillis() - lastTimestamp))) > 0) {
-                        Thread.sleep(toSleep);
-                    }
-                    lastTimestamp = Calendar.getInstance().getTimeInMillis();
-                    if (packetCount++ == packetRate) {
-                        // Completato l'invio di un frame audio
-                        // System.err.println(String.format("sync: %.2f",
-                        // syncInterval));
-                        if (lastFrameTimestamp != 0) {
-
-							/*
-                             * Al termine di ogni frame, viene calcolato il
-							 * ritardo / l'anticipo accumulato che viene
-							 * redistribuito sui pacchetti del frame successivo,
-							 * in modo da adeguarsi e recuperare dinamicamente
-							 * il passo giusto. Ad esso viene aggiunto il tempo
-							 * da aggiungere in pausa per la differenza fra i
-							 * bytes spediti e quelli che dovevano essere
-							 * spediti idealmente in base al numero di bytes per
-							 * ms.
-							 */
-                            syncInterval += (((packetCount * packetSize - frameSize) / frameBytesPerMs) + (1000.0d - (Calendar.getInstance().getTimeInMillis() - lastFrameTimestamp)))
-                                    / packetRate;
-                        }
-                        packetCount = 0;
-                        lastFrameTimestamp = Calendar.getInstance().getTimeInMillis();
-                    }
-                    pd = new PacketDataChunk(audioFile.getMusicId(), framebuf, (char) size, multicastGroupAddress, multicastGroupPort);
-                    packetDispatcher.send(pd);
+                streamingPlan.fillAudioBuffer();
+                if (alive = streamingPlan.getFrameBufferContentLength() >= 0) {
+                    streamingPlan.waitForTimeToSendPacket();
+                    dataChunk = new PacketDataChunk(
+                        audioFile.getMusicId(),
+                        streamingPlan.getFrameBuffer(),
+                        (char) streamingPlan.getFrameBufferContentLength(),
+                        multicastGroupAddress,
+                        multicastGroupPort
+                    );
+                    packetDispatcher.send(dataChunk);
                 }
             } catch (IOException e) {
                 alive = false;
                 e.printStackTrace();
             } catch (InterruptedException e) {
-                alive = false;
                 System.err.println("The audio stream writer has been interrupted");
+                break;
             }
         }
-        try {
-            packetDispatcher.send((new PacketEnd(audioFile.getMusicId(), multicastGroupAddress, multicastGroupPort)));
-            if (fr != null) {
-                fr.close();
-            }
-            // if (fw!=null) {
-            // fw.close();
-            // }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+
+        notifyEndOfStreaming();
+
+        streamingPlan.close();
         System.err.println("The audio stream writer has completed...");
     }
 
+
+    private void notifyBeginOfStreaming() {
+        try {
+            packetDispatcher.send(new PacketBegin(audioFile, multicastGroupAddress, multicastGroupPort));
+        } catch (IOException e) {
+            alive = false;
+            System.err.println("Error occurred while starting streaming: " + e.getMessage());
+        }
+    }
+
+    private void notifyEndOfStreaming() {
+        try {
+            packetDispatcher.send((new PacketEnd(audioFile.getMusicId(), multicastGroupAddress, multicastGroupPort)));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
