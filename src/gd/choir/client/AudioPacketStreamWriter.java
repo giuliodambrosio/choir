@@ -6,6 +6,7 @@ import java.net.InetAddress;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
 import com.sun.istack.internal.NotNull;
+import com.sun.istack.internal.Nullable;
 import gd.choir.common.PacketDispatcher;
 import gd.choir.data.packet.datagram.audio.PacketBegin;
 import gd.choir.data.packet.datagram.audio.PacketDataChunk;
@@ -34,11 +35,12 @@ public class AudioPacketStreamWriter implements Runnable {
     /**
      * The thread for this runnable
      */
+    @Nullable
     private Thread runningThread = null;
 
     public AudioPacketStreamWriter(
             @NotNull final ClientAudioFile audioFile,
-            @NotNull PacketDispatcher packetDispatcher,
+            @NotNull final PacketDispatcher packetDispatcher,
             @NotNull final InetAddress multicastGroupAddress,
             @NotNull final char multicastGroupPort
     ) throws IOException, UnsupportedAudioFileException {
@@ -82,7 +84,7 @@ public class AudioPacketStreamWriter implements Runnable {
     public final void run() {
         PacketDataChunk dataChunk;
 
-        notifyBeginOfStreaming();
+        notifyBeginOfStream();
 
         while (alive) {
             try {
@@ -107,27 +109,27 @@ public class AudioPacketStreamWriter implements Runnable {
             }
         }
 
-        notifyEndOfStreaming();
+        notifyEndOfStream();
 
         streamingPlan.close();
         System.err.println("The audio stream writer has completed...");
     }
 
 
-    private void notifyBeginOfStreaming() {
+    private void notifyBeginOfStream() {
         try {
             packetDispatcher.send(new PacketBegin(audioFile, multicastGroupAddress, multicastGroupPort));
         } catch (IOException e) {
             alive = false;
-            System.err.println("Error occurred while starting streaming: " + e.getMessage());
+            System.err.println("Error occurred while starting stream: " + e.getMessage());
         }
     }
 
-    private void notifyEndOfStreaming() {
+    private void notifyEndOfStream() {
         try {
             packetDispatcher.send((new PacketEnd(audioFile.getMusicId(), multicastGroupAddress, multicastGroupPort)));
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("Error occurred while ending audio stream: " + e.getMessage());
         }
     }
 }

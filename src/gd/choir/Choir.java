@@ -15,20 +15,20 @@ import javax.sound.sampled.AudioSystem;
 /**
  * @author Giulio D'Ambrosio
  */
-public class Jukebox {
-	private static final String	JB_MULTICAST_ADDR="239.255.49.1";
-	private static final char	JB_MULTICAST_PORT=9871;
-	private static final String	JB_MULTICAST_AUDIO_PATH="./audiosamples/";
-	private static final char	JB_SERVER_PORT=9872;
+public class Choir {
+	private static final String CHOIR_MULTICAST_ADDR ="239.255.49.1";
+	private static final char CHOIR_MULTICAST_PORT =9871;
+	private static final String CHOIR_MULTICAST_AUDIO_PATH ="./audiosamples/";
+	private static final char CHOIR_SERVER_PORT =9872;
 	/**
 	 * @param args command line arguments
 	 */
 	public static void main(String[] args) {
 		ServerMain serverMain;
 		Client client;
-		String	groupAddress=JB_MULTICAST_ADDR;
-		char groupPort=JB_MULTICAST_PORT;
-		String	audioPath=JB_MULTICAST_AUDIO_PATH;
+		String	groupAddress= CHOIR_MULTICAST_ADDR;
+		char groupPort= CHOIR_MULTICAST_PORT;
+		String	audioPath= CHOIR_MULTICAST_AUDIO_PATH;
 
         if (args.length == 0) {
             CommandUsagePrinter usage = new CommandUsagePrinter();
@@ -47,7 +47,7 @@ public class Jukebox {
 				client=new Client(groupAddress, groupPort, audioPath);
 				if (!client.connect()) {
 					System.err.println("No active server found: becoming a serverMain");
-					serverMain =new ServerMain(groupAddress,groupPort,JB_SERVER_PORT,client);
+					serverMain =new ServerMain(groupAddress,groupPort, CHOIR_SERVER_PORT,client);
 					serverMain.start();
 				}
 				int numr=0;
